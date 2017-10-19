@@ -930,6 +930,7 @@ $wgAutoloadLocalClasses = [
 	'MediaWiki\\Session\\UserInfo' => __DIR__ . '/includes/session/UserInfo.php',
 	'MediaWiki\\ShellDisabledError' => __DIR__ . '/includes/exception/ShellDisabledError.php',
 	'MediaWiki\\Shell\\Command' => __DIR__ . '/includes/shell/Command.php',
+	'MediaWiki\\Shell\\CommandFactory' => __DIR__ . '/includes/shell/CommandFactory.php',
 	'MediaWiki\\Shell\\Result' => __DIR__ . '/includes/shell/Result.php',
 	'MediaWiki\\Shell\\Shell' => __DIR__ . '/includes/shell/Shell.php',
 	'MediaWiki\\Site\\MediaWikiPageNameNormalizer' => __DIR__ . '/includes/site/MediaWikiPageNameNormalizer.php',
@@ -1706,5 +1707,8 @@ $wgAutoloadLocalClasses = [
 	'ZhConverter' => __DIR__ . '/languages/classes/LanguageZh.php',
 	'ZipDirectoryReader' => __DIR__ . '/includes/utils/ZipDirectoryReader.php',
 	'ZipDirectoryReaderError' => __DIR__ . '/includes/utils/ZipDirectoryReaderError.php',
+	'concatenatedgziphistoryblob' => __DIR__ . '/includes/HistoryBlob.php',
+	'historyblobcurstub' => __DIR__ . '/includes/HistoryBlob.php',
+	'historyblobstub' => __DIR__ . '/includes/HistoryBlob.php',
 	'profile_point' => __DIR__ . '/profileinfo.php',
 ];

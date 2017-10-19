@@ -132,14 +132,10 @@ return [
 	/* jQuery */
 
 	'jquery' => [
-		'scripts' => ( $GLOBALS['wgUsejQueryThree'] ?
-			[
-				'resources/lib/jquery/jquery3.js',
-				'resources/lib/jquery/jquery.migrate.js',
-			] : [
-				'resources/lib/jquery/jquery.js',
-			]
-		),
+		'scripts' => [
+			'resources/lib/jquery/jquery3.js',
+			'resources/lib/jquery/jquery.migrate.js',
+		],
 		'raw' => true,
 		'targets' => [ 'desktop', 'mobile' ],
 	],
@@ -1705,7 +1701,6 @@ return [
 	'mediawiki.page.watch.ajax' => [
 		'scripts' => 'resources/src/mediawiki/page/watch.js',
 		'dependencies' => [
-			'mediawiki.page.startup',
 			'mediawiki.api.watch',
 			'mediawiki.notify',
 			'mediawiki.util',

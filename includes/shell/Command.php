@@ -63,7 +63,7 @@ class Command {
 	private $everExecuted = false;
 
 	/** @var string|false */
-	private $cGroup = false;
+	private $cgroup = false;
 
 	/**
 	 * Constructor. Don't call directly, instead use Shell::command()
@@ -83,12 +83,14 @@ class Command {
 	 */
 	public function __destruct() {
 		if ( !$this->everExecuted ) {
+			$context = [ 'command' => $this->command ];
 			$message = __CLASS__ . " was instantiated, but execute() was never called.";
 			if ( $this->method ) {
-				$message .= " Calling method: {$this->method}.";
+				$message .= ' Calling method: {method}.';
+				$context['method'] = $this->method;
 			}
-			$message .= " Command: {$this->command}";
-			trigger_error( $message, E_USER_NOTICE );
+			$message .= ' Command: {command}';
+			$this->logger->warning( $message, $context );
 		}
 	}
 
@@ -131,10 +133,16 @@ class Command {
 	/**
 	 * Sets execution limits
 	 *
-	 * @param array $limits Optional array with limits(filesize, memory, time, walltime).
+	 * @param array $limits Associative array of limits. Keys (all optional):
+	 *   filesize (for ulimit -f), memory, time, walltime.
 	 * @return $this
 	 */
 	public function limits( array $limits ) {
+		if ( !isset( $limits['walltime'] ) && isset( $limits['time'] ) ) {
+			// Emulate the behavior of old wfShellExec() where walltime fell back on time
+			// if the latter was overridden and the former wasn't
+			$limits['walltime'] = $limits['time'];
+		}
 		$this->limits = $limits + $this->limits;
 
 		return $this;
@@ -180,11 +188,11 @@ class Command {
 	/**
 	 * Sets cgroup for this command
 	 *
-	 * @param string|false $cgroup
+	 * @param string|false $cgroup Absolute file path to the cgroup, or false to not use a cgroup
 	 * @return $this
 	 */
 	public function cgroup( $cgroup ) {
-		$this->cGroup = $cgroup;
+		$this->cgroup = $cgroup;
 
 		return $this;
 	}
@@ -227,8 +235,6 @@ class Command {
 		if ( is_executable( '/bin/bash' ) ) {
 			$time = intval( $this->limits['time'] );
 			$wallTime = intval( $this->limits['walltime'] );
-			// for b/c, wall time falls back to time
-			$wallTime = min( $time, $wallTime );
 			$mem = intval( $this->limits['memory'] );
 			$filesize = intval( $this->limits['filesize'] );
 
@@ -238,7 +244,7 @@ class Command {
 					   escapeshellarg(
 						   "MW_INCLUDE_STDERR=" . ( $this->useStderr ? '1' : '' ) . ';' .
 						   "MW_CPU_LIMIT=$time; " .
-						   'MW_CGROUP=' . escapeshellarg( $this->cGroup ) . '; ' .
+						   'MW_CGROUP=' . escapeshellarg( $this->cgroup ) . '; ' .
 						   "MW_MEM_LIMIT=$mem; " .
 						   "MW_FILE_SIZE_LIMIT=$filesize; " .
 						   "MW_WALL_CLOCK_LIMIT=$wallTime; " .
@@ -250,7 +256,7 @@ class Command {
 		if ( !$useLogPipe && $this->useStderr ) {
 			$cmd .= ' 2>&1';
 		}
-		wfDebug( __METHOD__ . ": $cmd\n" );
+		$this->logger->debug( __METHOD__ . ": $cmd" );
 
 		// Don't try to execute commands that exceed Linux's MAX_ARG_STRLEN.
 		// Other platforms may be more accomodating, but we don't want to be
