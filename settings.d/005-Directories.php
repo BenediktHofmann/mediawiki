@@ -4,6 +4,11 @@
 // If this is not set database will be used.
 // Must be writable by webserver.
 
+//Set default paths if not set
+if( getenv( 'BLUESPICE_DATA_PATH' ) === FALSE ){
+	putenv( 'BLUESPICE_DATA_PATH=/var/bluespice' );
+}
+
 $wgCacheDirectory = getenv( 'BLUESPICE_DATA_PATH' ) . "/cache";
 
 $wgUploadDirectory = getenv( 'BLUESPICE_DATA_PATH' ) . "/images";
