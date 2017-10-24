@@ -3,6 +3,9 @@
 <manifest
 	bluespice:versionCode="3.0.0-alpha"
 	bluespice:versionName="v3.0.0-alpha"
+	bluespice:repository="https://github.com/hallowelt/mediawiki"
+	bluespice:branch="master_docker"
+	bluespice:package="BlueSpice Free Docker"
 	bluespice:system="docker"
 	bluespice:installLocation="/var/www/bluespice"
 	bluespice:configLocation="/etc/bluespice"
