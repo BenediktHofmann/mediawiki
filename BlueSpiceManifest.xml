@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <manifest
-	bluespice:versionCode="3.0.0-alpha"
-	bluespice:versionName="v3.0.0-alpha"
-	bluespice:repository="https://github.com/hallowelt/mediawiki"
-	bluespice:branch="master_docker"
-	bluespice:package="BlueSpice Free Docker"
-	bluespice:system="docker"
-	bluespice:installLocation="/var/www/bluespice"
-	bluespice:configLocation="/etc/bluespice"
-	bluespice:dataLocation="/var/bluespice"
+	versionCode="3.0.0-alpha"
+	versionName="v3.0.0-alpha"
+	repository="https://github.com/hallowelt/mediawiki"
+	branch="master_docker"
+	package="BlueSpice Free Docker"
+	system="docker"
+	installLocation="/var/www/bluespice"
+	configLocation="/etc/bluespice"
+	dataLocation="/var/bluespice"
 />
