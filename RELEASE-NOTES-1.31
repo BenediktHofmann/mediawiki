@@ -11,6 +11,10 @@ production.
   essential.
 * $wgUsejQueryThree was removed, as it is now the default. This was documented as a
   temporary variable during the migration period, deprecated since 1.29.
+* $wgLogoHD has been updated to support svg images and uses $wgLogo where
+  possible for fallback images such as png.
+* (T44246) $wgFilterLogTypes will no longer ignore 'patrol' when user does
+  not have the right to mark things patrolled.
 * …
 
 === New features in 1.31 ===
@@ -53,6 +57,13 @@ changes to languages because of Phabricator reports.
 * The OutputPage class constructor now requires a context parameter,
   (instantiating without context was deprecated in 1.18)
 * mw.page (deprecated in 1.30) was removed.
+* Article::getLastPurgeTimestamp(), WikiPage::getLastPurgeTimestamp(), and the
+  related WikiPage::PURGE_* constants, deprecated in 1.29, were removed.
+* The Article::selectFields(), Article::onArticleCreate(),
+  Article::onArticleDelete(), and Article::onArticleEdit() methods, deprecated
+  in 1.24, were removed.
+* Installer::locateExecutable() and Installer::locateExecutableInDefaultPaths()
+  were removed, use ExecutableFinder::findInDefaultPaths() instead.
 
 == Compatibility ==
 MediaWiki 1.31 requires PHP 5.5.9 or later. There is experimental support for

@@ -88,12 +88,6 @@ class WikiPage implements Page, IDBAccessObject {
 	 */
 	protected $mLinksUpdated = '19700101000000';
 
-	/** @deprecated since 1.29. Added in 1.28 for partial purging, no longer used. */
-	const PURGE_CDN_CACHE = 1;
-	const PURGE_CLUSTER_PCACHE = 2;
-	const PURGE_GLOBAL_PCACHE = 4;
-	const PURGE_ALL = 7;
-
 	/**
 	 * Constructor and clear the article
 	 * @param Title $title Reference to a Title object.
@@ -512,7 +506,7 @@ class WikiPage implements Page, IDBAccessObject {
 			$cache = ObjectCache::getMainWANInstance();
 
 			return $cache->getWithSetCallback(
-				$cache->makeKey( 'page', 'content-model', $this->getLatest() ),
+				$cache->makeKey( 'page-content-model', $this->getLatest() ),
 				$cache::TTL_MONTH,
 				function () {
 					$rev = $this->getRevision();
@@ -1132,18 +1126,6 @@ class WikiPage implements Page, IDBAccessObject {
 		}
 
 		return true;
-	}
-
-	/**
-	 * Get the last time a user explicitly purged the page via action=purge
-	 *
-	 * @return string|bool TS_MW timestamp or false
-	 * @since 1.28
-	 * @deprecated since 1.29. It will always return false.
-	 */
-	public function getLastPurgeTimestamp() {
-		wfDeprecated( __METHOD__, '1.29' );
-		return false;
 	}
 
 	/**
@@ -2171,6 +2153,7 @@ class WikiPage implements Page, IDBAccessObject {
 				$this->getTitle(), null, $recursive, $editInfo->output
 			);
 			foreach ( $updates as $update ) {
+				$update->setCause( 'edit-page', $user->getName() );
 				if ( $update instanceof LinksUpdate ) {
 					$update->setRevision( $revision );
 					$update->setTriggeringUser( $user );
@@ -2913,7 +2896,7 @@ class WikiPage implements Page, IDBAccessObject {
 
 		$dbw->endAtomic( __METHOD__ );
 
-		$this->doDeleteUpdates( $id, $content, $revision );
+		$this->doDeleteUpdates( $id, $content, $revision, $user );
 
 		Hooks::run( 'ArticleDeleteComplete', [
 			&$wikiPageBeforeDelete,
@@ -2964,8 +2947,11 @@ class WikiPage implements Page, IDBAccessObject {
 	 *   the required updates. This may be needed because $this->getContent()
 	 *   may already return null when the page proper was deleted.
 	 * @param Revision|null $revision The latest page revision
+	 * @param User|null $user The user that caused the deletion
 	 */
-	public function doDeleteUpdates( $id, Content $content = null, Revision $revision = null ) {
+	public function doDeleteUpdates(
+		$id, Content $content = null, Revision $revision = null, User $user = null
+	) {
 		try {
 			$countable = $this->isCountable();
 		} catch ( Exception $ex ) {
@@ -2983,12 +2969,14 @@ class WikiPage implements Page, IDBAccessObject {
 			DeferredUpdates::addUpdate( $update );
 		}
 
+		$causeAgent = $user ? $user->getName() : 'unknown';
 		// Reparse any pages transcluding this page
-		LinksUpdate::queueRecursiveJobsForTable( $this->mTitle, 'templatelinks' );
-
+		LinksUpdate::queueRecursiveJobsForTable(
+			$this->mTitle, 'templatelinks', 'delete-page', $causeAgent );
 		// Reparse any pages including this image
 		if ( $this->mTitle->getNamespace() == NS_FILE ) {
-			LinksUpdate::queueRecursiveJobsForTable( $this->mTitle, 'imagelinks' );
+			LinksUpdate::queueRecursiveJobsForTable(
+				$this->mTitle, 'imagelinks', 'delete-page', $causeAgent );
 		}
 
 		// Clear caches

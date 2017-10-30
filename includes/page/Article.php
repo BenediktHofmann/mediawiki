@@ -1179,7 +1179,8 @@ class Article implements Page {
 		$cache = MediaWikiServices::getInstance()->getMainObjectStash();
 		$key = $cache->makeKey( 'page-recent-delete', md5( $title->getPrefixedText() ) );
 		$loggedIn = $this->getContext()->getUser()->isLoggedIn();
-		if ( $loggedIn || $cache->get( $key ) ) {
+		$sessionExists = $this->getContext()->getRequest()->getSession()->isPersistent();
+		if ( $loggedIn || $cache->get( $key ) || $sessionExists ) {
 			$logTypes = [ 'delete', 'move', 'protect' ];
 
 			$dbr = wfGetDB( DB_REPLICA );
@@ -1196,7 +1197,7 @@ class Article implements Page {
 					'lim' => 10,
 					'conds' => $conds,
 					'showIfEmpty' => false,
-					'msgKey' => [ $loggedIn
+					'msgKey' => [ $loggedIn || $sessionExists
 						? 'moveddeleted-notice'
 						: 'moveddeleted-notice-recent'
 					]
@@ -2118,16 +2119,6 @@ class Article implements Page {
 
 	/**
 	 * Call to WikiPage function for backwards compatibility.
-	 * @see WikiPage::getLastPurgeTimestamp
-	 * @deprecated since 1.29
-	 */
-	public function getLastPurgeTimestamp() {
-		wfDeprecated( __METHOD__, '1.29' );
-		return $this->mPage->getLastPurgeTimestamp();
-	}
-
-	/**
-	 * Call to WikiPage function for backwards compatibility.
 	 * @see WikiPage::doViewUpdates
 	 */
 	public function doViewUpdates( User $user, $oldid = 0 ) {
@@ -2646,46 +2637,6 @@ class Article implements Page {
 		$title = $this->mPage->getTitle();
 		$handler = ContentHandler::getForTitle( $title );
 		return $handler->getAutoDeleteReason( $title, $hasHistory );
-	}
-
-	/**
-	 * @return array
-	 *
-	 * @deprecated since 1.24, use WikiPage::selectFields() instead
-	 */
-	public static function selectFields() {
-		wfDeprecated( __METHOD__, '1.24' );
-		return WikiPage::selectFields();
-	}
-
-	/**
-	 * @param Title $title
-	 *
-	 * @deprecated since 1.24, use WikiPage::onArticleCreate() instead
-	 */
-	public static function onArticleCreate( $title ) {
-		wfDeprecated( __METHOD__, '1.24' );
-		WikiPage::onArticleCreate( $title );
-	}
-
-	/**
-	 * @param Title $title
-	 *
-	 * @deprecated since 1.24, use WikiPage::onArticleDelete() instead
-	 */
-	public static function onArticleDelete( $title ) {
-		wfDeprecated( __METHOD__, '1.24' );
-		WikiPage::onArticleDelete( $title );
-	}
-
-	/**
-	 * @param Title $title
-	 *
-	 * @deprecated since 1.24, use WikiPage::onArticleEdit() instead
-	 */
-	public static function onArticleEdit( $title ) {
-		wfDeprecated( __METHOD__, '1.24' );
-		WikiPage::onArticleEdit( $title );
 	}
 
 	// ******
