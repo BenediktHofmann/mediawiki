@@ -1976,6 +1976,7 @@ class OutputPage extends ContextSource {
 	 * @deprecated since 1.27 Use setCdnMaxage() instead
 	 */
 	public function setSquidMaxage( $maxage ) {
+		wfDeprecated( __METHOD__, '1.27' );
 		$this->setCdnMaxage( $maxage );
 	}
 
@@ -4018,6 +4019,13 @@ class OutputPage extends ContextSource {
 		if ( !is_array( $logo ) ) {
 			// No media queries required if we only have one variant
 			$this->addLinkHeader( '<' . $logo . '>;rel=preload;as=image' );
+			return;
+		}
+
+		if ( isset( $logo['svg'] ) ) {
+			// No media queries required if we only have a 1x and svg variant
+			// because all preload-capable browsers support SVGs
+			$this->addLinkHeader( '<' . $logo['svg'] . '>;rel=preload;as=image' );
 			return;
 		}
 

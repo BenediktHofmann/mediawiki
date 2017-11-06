@@ -182,13 +182,15 @@ class DifferenceEngine extends ContextSource {
 	public function deletedLink( $id ) {
 		if ( $this->getUser()->isAllowed( 'deletedhistory' ) ) {
 			$dbr = wfGetDB( DB_REPLICA );
-			$row = $dbr->selectRow( 'archive',
-				array_merge(
-					Revision::selectArchiveFields(),
-					[ 'ar_namespace', 'ar_title' ]
-				),
+			$arQuery = Revision::getArchiveQueryInfo();
+			$row = $dbr->selectRow(
+				$arQuery['tables'],
+				array_merge( $arQuery['fields'], [ 'ar_namespace', 'ar_title' ] ),
 				[ 'ar_rev_id' => $id ],
-				__METHOD__ );
+				__METHOD__,
+				[],
+				$arQuery['joins']
+			);
 			if ( $row ) {
 				$rev = Revision::newFromArchiveRow( $row );
 				$title = Title::makeTitleSafe( $row->ar_namespace, $row->ar_title );
@@ -925,7 +927,7 @@ class DifferenceEngine extends ContextSource {
 			$wikidiff2Version = phpversion( 'wikidiff2' );
 			if (
 				$wikidiff2Version !== false &&
-				version_compare( $wikidiff2Version, '0.3', '>=' )
+				version_compare( $wikidiff2Version, '1.5.0', '>=' )
 			) {
 				$text = wikidiff2_do_diff(
 					$otext,
@@ -992,6 +994,7 @@ class DifferenceEngine extends ContextSource {
 		$diffs = new Diff( $ota, $nta );
 		$formatter = new TableDiffFormatter();
 		$difftext = $wgContLang->unsegmentForDiff( $formatter->format( $diffs ) );
+		$difftext .= $this->debug( 'native PHP' );
 
 		return $difftext;
 	}

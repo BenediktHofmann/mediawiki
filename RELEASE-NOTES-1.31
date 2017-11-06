@@ -11,6 +11,10 @@ production.
   essential.
 * $wgUsejQueryThree was removed, as it is now the default. This was documented as a
   temporary variable during the migration period, deprecated since 1.29.
+* $wgLogoHD has been updated to support svg images and uses $wgLogo where
+  possible for fallback images such as png.
+* (T44246) $wgFilterLogTypes will no longer ignore 'patrol' when user does
+  not have the right to mark things patrolled.
 * …
 
 === New features in 1.31 ===
@@ -26,6 +30,14 @@ production.
 * …
 
 ==== Removed and replaced external libraries ====
+* (T17845) The deprecated 'jquery.badge' module was removed.
+* The deprecated 'jquery.autoEllipsis' module was removed. Use the CSS
+  text-overflow property instead.
+* The deprecated 'jquery.placeholder' module was removed.
+* The deprecated 'jquery.appear' module was removed. Use the
+  'mediawiki.viewport' module instead.
+* The deprecated 'mediawiki.widgets.CategorySelector' module alias was removed.
+  Use the 'mediawiki.widgets.CategoryMultiselectWidget' module directly instead.
 * …
 
 === Bug fixes in 1.31 ===
@@ -53,6 +65,36 @@ changes to languages because of Phabricator reports.
 * The OutputPage class constructor now requires a context parameter,
   (instantiating without context was deprecated in 1.18)
 * mw.page (deprecated in 1.30) was removed.
+* Article::getLastPurgeTimestamp(), WikiPage::getLastPurgeTimestamp(), and the
+  related WikiPage::PURGE_* constants, deprecated in 1.29, were removed.
+* The Article::selectFields(), Article::onArticleCreate(),
+  Article::onArticleDelete(), and Article::onArticleEdit() methods, deprecated
+  in 1.24, were removed.
+* Installer::locateExecutable() and Installer::locateExecutableInDefaultPaths()
+  were removed, use ExecutableFinder::findInDefaultPaths() instead.
+* Several methods for returning lists of fields to select from the database
+  have been deprecated in favor of similar methods that also return the tables
+  to select from and the join conditions for those tables.
+  * Block::selectFields() → Block::getQueryInfo()
+  * RecentChange::selectFields() → RecentChange::getQueryInfo()
+  * ArchivedFile::selectFields() → ArchivedFile::getQueryInfo()
+  * LocalFile::selectFields() → LocalFile::getQueryInfo()
+  * LocalFile::getCacheFields() with a prefix no longer works
+  * LocalFile::getLazyCacheFields() with a prefix no longer works
+  * OldLocalFile::selectFields() → OldLocalFile::getQueryInfo()
+  * RecentChange::selectFields() → RecentChange::getQueryInfo()
+  * Revision::userJoinCond() → Revision::getQueryInfo( [ 'user' ] )
+  * Revision::selectUserFields() → Revision::getQueryInfo( [ 'user' ] )
+  * Revision::pageJoinCond() → Revision::getQueryInfo( [ 'page' ] )
+  * Revision::selectPageFields() → Revision::getQueryInfo( [ 'page' ] )
+  * Revision::selectTextFields() → Revision::getQueryInfo( [ 'text' ] )
+  * Revision::selectFields() → Revision::getQueryInfo()
+  * Revision::selectArchiveFields() → Revision::getArchiveQueryInfo()
+  * User::selectFields() → User::getQueryInfo()
+  * WikiPage::selectFields() → WikiPage::getQueryInfo()
+  * Due to significant refactoring, method ContribsPager::getUserCond() that had
+    no access restriction has been removed.
+  * Revision::setUserIdAndName() was deprecated.
 
 == Compatibility ==
 MediaWiki 1.31 requires PHP 5.5.9 or later. There is experimental support for

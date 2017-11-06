@@ -32,7 +32,8 @@
 			"قیصرانی",
 			"Junaid Ahmad",
 			"Abuaneeqa",
-			"Saraiki"
+			"Saraiki",
+			"BukhariSaeed"
 		]
 	},
 	"tog-underline": "ربط کی خط کشیدگی:",
@@ -1392,7 +1393,6 @@
 	"rcfilters-tag-prefix-namespace-inverted": "<strong>:نہیں</strong> $1",
 	"rcfilters-exclude-button-off": "منتخب شدہ کو مستثنیٰ کریں",
 	"rcfilters-exclude-button-on": "منتخب شدہ مستثنی ہیں",
-	"rcfilters-view-advanced-filters-label": "اضافی فلٹر",
 	"rcfilters-view-tags": "ٹیگ شدہ ترامیم",
 	"rcfilters-view-namespaces-tooltip": "فلٹر کے نتائج بلحاظ نام فضا",
 	"rcfilters-view-tags-tooltip": "ترمیمی ٹیگ کے ذریعہ نتائج کو فلٹر کریں",
@@ -3536,7 +3536,7 @@
 	"feedback-thanks": "شکریہ! آپ کا تبصرہ صفحہ «[$1 $2]» میں درج کر دیا گیا ہے۔",
 	"feedback-thanks-title": "شکریہ!",
 	"feedback-useragent": "یوزر ایجنٹ:",
-	"searchsuggest-search": "تلاش",
+	"searchsuggest-search": "{{SITENAME}} میں تلاش کریں",
 	"searchsuggest-containing": "نتائج...",
 	"api-error-badtoken": "داخلی نقص: غلط ٹوکن۔",
 	"api-error-emptypage": "نئے خالی صفحات بنانے کی اجازت نہیں ہے۔",

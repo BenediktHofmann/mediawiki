@@ -152,6 +152,78 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 	}
 
 	/**
+	 * @covers Revision::insertOn
+	 */
+	public function testInsertOn_success() {
+		$parentId = $this->testPage->getLatest();
+
+		// If an ExternalStore is set don't use it.
+		$this->setMwGlobals( 'wgDefaultExternalStore', false );
+
+		$rev = new Revision( [
+			'page' => $this->testPage->getId(),
+			'title' => $this->testPage->getTitle(),
+			'text' => 'Revision Text',
+			'comment' => 'Revision comment',
+		] );
+
+		$revId = $rev->insertOn( wfGetDB( DB_MASTER ) );
+
+		$this->assertInternalType( 'integer', $revId );
+		$this->assertInternalType( 'integer', $rev->getTextId() );
+		$this->assertSame( $revId, $rev->getId() );
+
+		$this->assertSelect(
+			'text',
+			[ 'old_id', 'old_text' ],
+			"old_id = {$rev->getTextId()}",
+			[ [ strval( $rev->getTextId() ), 'Revision Text' ] ]
+		);
+		$this->assertSelect(
+			'revision',
+			[
+				'rev_id',
+				'rev_page',
+				'rev_text_id',
+				'rev_user',
+				'rev_minor_edit',
+				'rev_deleted',
+				'rev_len',
+				'rev_parent_id',
+				'rev_sha1',
+			],
+			"rev_id = {$rev->getId()}",
+			[ [
+				strval( $rev->getId() ),
+				strval( $this->testPage->getId() ),
+				strval( $rev->getTextId() ),
+				'0',
+				'0',
+				'0',
+				'13',
+				strval( $parentId ),
+				's0ngbdoxagreuf2vjtuxzwdz64n29xm',
+			] ]
+		);
+	}
+
+	/**
+	 * @covers Revision::insertOn
+	 */
+	public function testInsertOn_exceptionOnNoPage() {
+		// If an ExternalStore is set don't use it.
+		$this->setMwGlobals( 'wgDefaultExternalStore', false );
+		$this->setExpectedException(
+			MWException::class,
+			"Cannot insert revision: page ID must be nonzero"
+		);
+
+		$rev = new Revision( [] );
+
+		$rev->insertOn( wfGetDB( DB_MASTER ) );
+	}
+
+	/**
 	 * @covers Revision::newFromTitle
 	 */
 	public function testNewFromTitle_withoutId() {
@@ -193,7 +265,9 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 		$orig = $this->makeRevisionWithProps();
 
 		$dbr = wfGetDB( DB_REPLICA );
-		$res = $dbr->select( 'revision', Revision::selectFields(), [ 'rev_id' => $orig->getId() ] );
+		$revQuery = Revision::getQueryInfo();
+		$res = $dbr->select( $revQuery['tables'], $revQuery['fields'], [ 'rev_id' => $orig->getId() ],
+		   __METHOD__, [], $revQuery['joins'] );
 		$this->assertTrue( is_object( $res ), 'query failed' );
 
 		$row = $res->fetchObject();
@@ -261,9 +335,11 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 		$page->doDeleteArticle( 'test Revision::newFromArchiveRow' );
 
 		$dbr = wfGetDB( DB_REPLICA );
-		$selectFields = $selectModifier( Revision::selectArchiveFields() );
+		$arQuery = Revision::getArchiveQueryInfo();
+		$arQuery['fields'] = $selectModifier( $arQuery['fields'] );
 		$res = $dbr->select(
-			'archive', $selectFields, [ 'ar_rev_id' => $orig->getId() ]
+			$arQuery['tables'], $arQuery['fields'], [ 'ar_rev_id' => $orig->getId() ],
+			__METHOD__, [], $arQuery['joins']
 		);
 		$this->assertTrue( is_object( $res ), 'query failed' );
 
@@ -288,8 +364,10 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 		$page->doDeleteArticle( 'test Revision::newFromArchiveRow' );
 
 		$dbr = wfGetDB( DB_REPLICA );
+		$arQuery = Revision::getArchiveQueryInfo();
 		$res = $dbr->select(
-			'archive', Revision::selectArchiveFields(), [ 'ar_rev_id' => $orig->getId() ]
+			$arQuery['tables'], $arQuery['fields'], [ 'ar_rev_id' => $orig->getId() ],
+			__METHOD__, [], $arQuery['joins']
 		);
 		$this->assertTrue( is_object( $res ), 'query failed' );
 

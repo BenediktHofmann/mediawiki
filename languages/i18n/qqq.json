@@ -192,7 +192,8 @@
 			"Mazab IZW",
 			"Mainframe98",
 			"Pginer",
-			"Wladek92"
+			"Wladek92",
+			"Gombang"
 		]
 	},
 	"sidebar": "{{notranslate}}",
@@ -1533,6 +1534,7 @@
 	"recentchangestext": "Text in [[Special:RecentChanges]]",
 	"recentchanges-noresult": "Used in [[Special:RecentChanges]], [[Special:RecentChangesLinked]], and [[Special:Watchlist]] when there are no changes to be shown.",
 	"recentchanges-timeout": "Used in [[Special:RecentChanges]], [[Special:RecentChangesLinked]], and [[Special:Watchlist]] when a query times out.",
+	"recentchanges-network": "Used in [[Special:RecentChanges]], [[Special:RecentChangesLinked]] and [[Special:Watchlist]] when network error occurs.",
 	"recentchanges-feed-description": "Used in feed of RecentChanges. See example [{{canonicalurl:Special:RecentChanges|feed=atom}} feed].",
 	"recentchanges-label-newpage": "# Used as tooltip for {{msg-mw|Newpageletter}}.\n# Also used as legend. Preceded by {{msg-mw|Newpageletter}} and followed by {{msg-mw|Recentchanges-legend-newpage}}.",
 	"recentchanges-label-minor": "# Used as tooltip for {{msg-mw|Minoreditletter}}\n# Also used as legend. Preceded by {{msg-mw|Minoreditletter}}",
@@ -1577,7 +1579,7 @@
 	"rcfilters-restore-default-filters": "Label for the button that resets filters to defaults",
 	"rcfilters-clear-all-filters": "Title for the button that clears all filters",
 	"rcfilters-show-new-changes": "Label for the button to show new changes.",
-	"rcfilters-search-placeholder": "Placeholder for the filter search input.",
+	"rcfilters-search-placeholder": "Placeholder for the filter search input. The first \"Filter\" is a verb, and the second \"filter\" is a noun.",
 	"rcfilters-invalid-filter": "A label for an invalid filter.",
 	"rcfilters-empty-filter": "Placeholder for the filter list when no filters were chosen.",
 	"rcfilters-filterlist-title": "Title for the filters list.\n{{Identical|Filter}}",
@@ -1656,7 +1658,6 @@
 	"rcfilters-tag-prefix-tags": "Prefix for the edit tags in [[Special:RecentChanges]]. Edit tags use a hash (#) as prefix. Please keep this format.\n\nParameters:\n* $1 - Tag display name.",
 	"rcfilters-exclude-button-off": "Title for the button that excludes selected namespaces, when it is not yet active.",
 	"rcfilters-exclude-button-on": "Title for the button that excludes selected namespaces, when it is active.",
-	"rcfilters-view-advanced-filters-label": "Label for the view switch that changes between advanced filters in [[Special:RecentChanges]]",
 	"rcfilters-view-tags": "Title for the tags view in [[Special:RecentChanges]]\n{{Identical|Tag}}",
 	"rcfilters-view-namespaces-tooltip": "Tooltip for the button that loads the namespace view in [[Special:RecentChanges]]",
 	"rcfilters-view-tags-tooltip": "Tooltip for the button that loads the tags view in [[Special:RecentChanges]]",

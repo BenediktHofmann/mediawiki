@@ -290,6 +290,17 @@ $wgLogo = false;
  * ];
  * @endcode
  *
+ * SVG is also supported but when enabled, it
+ * disables 1.5x and 2x as svg will already
+ * be optimised for screen resolution.
+ *
+ * @par Example:
+ * @code
+ * $wgLogoHD = [
+ *	"svg" => "path/to/svg_version.svg",
+ * ];
+ * @endcode
+ *
  * @since 1.25
  */
 $wgLogoHD = false;
@@ -6340,7 +6351,9 @@ $wgStatsdMetricPrefix = 'MediaWiki';
  * Rates are sampling probabilities (e.g. 0.1 means 1 in 10 events are sampled).
  * @since 1.28
  */
-$wgStatsdSamplingRates = [];
+$wgStatsdSamplingRates = [
+	'wanobjectcache:*' => 0.001
+];
 
 /**
  * InfoAction retrieves a list of transclusion links (both to and from).
@@ -6793,6 +6806,10 @@ $wgRCWatchCategoryMembership = false;
 /**
  * Use RC Patrolling to check for vandalism (from recent changes and watchlists)
  * New pages and new files are included.
+ *
+ * @note If you disable all patrolling features, you probably also want to
+ *  remove 'patrol' from $wgFilterLogTypes so a show/hide link isn't shown on
+ *  Special:Log.
  */
 $wgUseRCPatrol = true;
 
@@ -6824,11 +6841,19 @@ $wgStructuredChangeFiltersLiveUpdatePollingRate = 3;
 
 /**
  * Use new page patrolling to check new pages on Special:Newpages
+ *
+ * @note If you disable all patrolling features, you probably also want to
+ *  remove 'patrol' from $wgFilterLogTypes so a show/hide link isn't shown on
+ *  Special:Log.
  */
 $wgUseNPPatrol = true;
 
 /**
  * Use file patrolling to check new files on Special:Newfiles
+ *
+ * @note If you disable all patrolling features, you probably also want to
+ *  remove 'patrol' from $wgFilterLogTypes so a show/hide link isn't shown on
+ *  Special:Log.
  *
  * @since 1.27
  */

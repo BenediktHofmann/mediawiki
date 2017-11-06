@@ -151,24 +151,8 @@ return [
 		'messages' => [ 'brackets', 'word-separator' ],
 		'targets' => [ 'mobile', 'desktop' ],
 	],
-	'jquery.appear' => [
-		'deprecated' => 'Please use "mediawiki.viewport" instead.',
-		'scripts' => 'resources/lib/jquery/jquery.appear.js',
-	],
 	'jquery.async' => [
 		'scripts' => 'resources/lib/jquery/jquery.async.js',
-	],
-	'jquery.autoEllipsis' => [
-		'deprecated' => 'Use CSS text-overflow instead.',
-		'scripts' => 'resources/src/jquery/jquery.autoEllipsis.js',
-		'dependencies' => 'jquery.highlightText',
-		'targets' => [ 'desktop', 'mobile' ],
-	],
-	'jquery.badge' => [
-		'deprecated' => 'Please use Notifications instead.',
-		'scripts' => 'resources/src/jquery/jquery.badge.js',
-		'styles' => 'resources/src/jquery/jquery.badge.css',
-		'dependencies' => 'mediawiki.language',
 	],
 	'jquery.byteLength' => [
 		'scripts' => 'resources/src/jquery/jquery.byteLength.js',
@@ -298,12 +282,6 @@ return [
 		'scripts' => 'resources/src/jquery/jquery.mw-jump.js',
 		'targets' => [ 'desktop', 'mobile' ],
 	],
-	'jquery.placeholder' => [
-		'deprecated' => 'Use of "jquery.placeholder" is deprecated since MediaWiki 1.29.0',
-
-		'scripts' => 'resources/src/jquery/jquery.placeholder.js',
-		'targets' => [ 'desktop', 'mobile' ],
-	],
 	'jquery.qunit' => [
 		'scripts' => 'resources/lib/qunitjs/qunit.js',
 		'styles' => 'resources/lib/qunitjs/qunit.css',
@@ -360,7 +338,7 @@ return [
 	/* jQuery UI */
 
 	'jquery.ui.core' => [
-		'deprecated' => 'Please use "mediawiki.ui.button" or "oojs-ui" instead.',
+		'deprecated' => 'Please use OOUI instead.',
 		'scripts' => 'resources/lib/jquery.ui/jquery.ui.core.js',
 		'dependencies' => [
 			'jquery.ui.core.styles',
@@ -1896,7 +1874,6 @@ return [
 			'rcfilters-tag-prefix-tags',
 			'rcfilters-exclude-button-off',
 			'rcfilters-exclude-button-on',
-			'rcfilters-view-advanced-filters-label',
 			'rcfilters-view-tags',
 			'rcfilters-view-namespaces-tooltip',
 			'rcfilters-view-tags-tooltip',
@@ -1910,9 +1887,11 @@ return [
 			'rcfilters-other-review-tools',
 			'blanknamespace',
 			'namespaces',
+			'tags-title',
 			'invert',
 			'recentchanges-noresult',
 			'recentchanges-timeout',
+			'recentchanges-network',
 			'quotation-marks',
 		],
 		'dependencies' => [
@@ -2311,6 +2290,7 @@ return [
 	/* MediaWiki UI */
 
 	'mediawiki.ui' => [
+		'deprecated' => 'Please use OOUI instead.',
 		'skinStyles' => [
 			'default' => [
 				'resources/src/mediawiki.ui/default.less',
@@ -2526,12 +2506,6 @@ return [
 			'oojs-ui.styles.icons-movement',
 		],
 		'targets' => [ 'desktop', 'mobile' ],
-	],
-	'mediawiki.widgets.CategorySelector' => [
-		'deprecated' => 'Use "mw.widgets.CategoryMultiselectWidget" instead. See T161285.',
-		'dependencies' => [
-			'mediawiki.widgets.CategoryMultiselectWidget',
-		],
 	],
 	'mediawiki.widgets.CategoryMultiselectWidget' => [
 		'scripts' => [

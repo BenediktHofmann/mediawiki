@@ -689,6 +689,8 @@ $destTitle: destination title (object)
 'ArticlePageDataBefore': Before loading data of an article from the database.
 &$wikiPage: WikiPage (object) that data will be loaded
 &$fields: fields (array) to load from the database
+&$tables: tables (array) to load from the database
+&$joinConds: join conditions (array) to load from the database
 
 'ArticlePrepareTextForEdit': Called when preparing text to be saved.
 $wikiPage: the WikiPage being saved
@@ -2940,6 +2942,7 @@ $result: The SearchResult object
 $terms: String of the search terms entered
 $specialSearch: The SpecialSearch object
 &$query: Array of query string parameters for the link representing the search result.
+&$attributes: Array of title link attributes, can be modified by extension.
 
 'SidebarBeforeOutput': Allows to edit sidebar just before it is output by skins.
 Warning: This hook is run on each display. You should consider to use

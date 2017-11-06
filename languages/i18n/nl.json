@@ -88,7 +88,8 @@
 			"Jos1950",
 			"Ooswesthoesbes",
 			"MarcoSwart",
-			"Pahles"
+			"Pahles",
+			"Optilete"
 		]
 	},
 	"tog-underline": "Verwijzingen onderstrepen:",
@@ -1352,6 +1353,8 @@
 	"recentchanges-legend": "Opties voor recente wijzigingen",
 	"recentchanges-summary": "Op deze pagina kunt u de recentste wijzigingen in deze wiki bekijken.",
 	"recentchanges-noresult": "Er zijn in deze periode geen wijzigingen gemaakt die aan de criteria voldoen.",
+	"recentchanges-timeout": "Deze zoekopdracht kost te veel tijd. U kunt het opnieuw proberen met andere zoekparameters.",
+	"recentchanges-network": "Vanwege een technische fout kunnen er geen resultaten worden geladen. U kunt proberen de pagina te verversen.",
 	"recentchanges-feed-description": "Met deze feed kunt u de recentste wijzigingen in deze wiki bekijken.",
 	"recentchanges-label-newpage": "Met deze bewerking is een nieuwe pagina aangemaakt",
 	"recentchanges-label-minor": "Dit is een kleine bewerking",
@@ -1393,7 +1396,7 @@
 	"rcfilters-restore-default-filters": "Standaard filters terugzetten",
 	"rcfilters-clear-all-filters": "Alle filters verwijderen",
 	"rcfilters-show-new-changes": "Toon nieuwste wijzigingen",
-	"rcfilters-search-placeholder": "Filter recente wijzigingen (blader of begin met intypen)",
+	"rcfilters-search-placeholder": "Filter wijzigingen (gebruik het menu of zoek op filternaam)",
 	"rcfilters-invalid-filter": "Ongeldig filter",
 	"rcfilters-empty-filter": "Geen actieve filters. Alle bijdragen worden weergegeven.",
 	"rcfilters-filterlist-title": "Filters",
@@ -1470,7 +1473,6 @@
 	"rcfilters-tag-prefix-namespace-inverted": "<strong>:niet</strong> $1",
 	"rcfilters-exclude-button-off": "Geselecteerde uitsluiten",
 	"rcfilters-exclude-button-on": "Geselecteerde uitsluiten",
-	"rcfilters-view-advanced-filters-label": "Geavanceerde filters",
 	"rcfilters-view-tags": "Gelabelde bewerkingen",
 	"rcfilters-view-namespaces-tooltip": "Filter resultaten op naamruimte",
 	"rcfilters-view-tags-tooltip": "Filter resultaten door middel van bewerkingslabels",
