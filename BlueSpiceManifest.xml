@@ -10,4 +10,5 @@
 	installLocation="/var/www/bluespice"
 	configLocation="/etc/bluespice"
 	dataLocation="/var/bluespice"
+	pro="no"
 />
