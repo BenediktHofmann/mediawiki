@@ -133,7 +133,7 @@ return [
 
 	'jquery' => [
 		'scripts' => [
-			'resources/lib/jquery/jquery3.js',
+			'resources/lib/jquery/jquery.js',
 			'resources/lib/jquery/jquery.migrate.js',
 		],
 		'raw' => true,
@@ -1388,6 +1388,10 @@ return [
 		'scripts' => 'resources/src/mediawiki/mediawiki.experiments.js',
 		'targets' => [ 'desktop', 'mobile' ],
 	],
+	'mediawiki.editfont.styles' => [
+		'styles' => 'resources/src/mediawiki/mediawiki.editfont.css',
+		'targets' => [ 'desktop', 'mobile' ],
+	],
 
 	/* MediaWiki Action */
 
@@ -1399,6 +1403,7 @@ return [
 		'styles' => 'resources/src/mediawiki.action/mediawiki.action.edit.css',
 		'dependencies' => [
 			'mediawiki.action.edit.styles',
+			'mediawiki.editfont.styles',
 			'jquery.textSelection',
 			'oojs-ui-core',
 			'mediawiki.widgets.visibleByteLimit',
@@ -1849,6 +1854,7 @@ return [
 			'rcfilters-savedqueries-new-name-label',
 			'rcfilters-savedqueries-new-name-placeholder',
 			'rcfilters-savedqueries-add-new-title',
+			'rcfilters-savedqueries-already-saved',
 			'rcfilters-savedqueries-apply-label',
 			'rcfilters-savedqueries-apply-and-setdefault-label',
 			'rcfilters-savedqueries-cancel-label',
