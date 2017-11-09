@@ -991,4 +991,233 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 		);
 	}
 
+	/**
+	 * @covers Revision::getParentLengths
+	 */
+	public function testGetParentLengths_noRevIds() {
+		$this->assertSame(
+			[],
+			Revision::getParentLengths(
+				wfGetDB( DB_MASTER ),
+				[]
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getParentLengths
+	 */
+	public function testGetParentLengths_oneRevId() {
+		$text = '831jr091jr0921kr21kr0921kjr0921j09rj1';
+		$textLength = strlen( $text );
+
+		$this->testPage->doEditContent( new WikitextContent( $text ), __METHOD__ );
+		$rev[1] = $this->testPage->getLatest();
+
+		$this->assertSame(
+			[ $rev[1] => strval( $textLength ) ],
+			Revision::getParentLengths(
+				wfGetDB( DB_MASTER ),
+				[ $rev[1] ]
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getParentLengths
+	 */
+	public function testGetParentLengths_multipleRevIds() {
+		$textOne = '831jr091jr0921kr21kr0921kjr0921j09rj1';
+		$textOneLength = strlen( $textOne );
+		$textTwo = '831jr091jr092121j09rj1';
+		$textTwoLength = strlen( $textTwo );
+
+		$this->testPage->doEditContent( new WikitextContent( $textOne ), __METHOD__ );
+		$rev[1] = $this->testPage->getLatest();
+		$this->testPage->doEditContent( new WikitextContent( $textTwo ), __METHOD__ );
+		$rev[2] = $this->testPage->getLatest();
+
+		$this->assertSame(
+			[ $rev[1] => strval( $textOneLength ), $rev[2] => strval( $textTwoLength ) ],
+			Revision::getParentLengths(
+				wfGetDB( DB_MASTER ),
+				[ $rev[1], $rev[2] ]
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getTitle
+	 */
+	public function testGetTitle_fromExistingRevision() {
+		$this->assertTrue(
+			$this->testPage->getTitle()->equals(
+				$this->testPage->getRevision()->getTitle()
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getTitle
+	 */
+	public function testGetTitle_fromRevisionWhichWillLoadTheTitle() {
+		$rev = new Revision( [ 'id' => $this->testPage->getLatest() ] );
+		$this->assertTrue(
+			$this->testPage->getTitle()->equals(
+				$rev->getTitle()
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getTitle
+	 */
+	public function testGetTitle_forBadRevision() {
+		$rev = new Revision( [] );
+		$this->assertNull( $rev->getTitle() );
+	}
+
+	/**
+	 * @covers Revision::isMinor
+	 */
+	public function testIsMinor_true() {
+		// Use a sysop to ensure we can mark edits as minor
+		$sysop = $this->getTestSysop()->getUser();
+
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			__METHOD__,
+			EDIT_MINOR,
+			false,
+			$sysop
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( true, $rev->isMinor() );
+	}
+
+	/**
+	 * @covers Revision::isMinor
+	 */
+	public function testIsMinor_false() {
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			__METHOD__,
+			0
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( false, $rev->isMinor() );
+	}
+
+	/**
+	 * @covers Revision::getTimestamp
+	 */
+	public function testGetTimestamp() {
+		$testTimestamp = wfTimestampNow();
+
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			__METHOD__
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertInternalType( 'string', $rev->getTimestamp() );
+		$this->assertTrue( strlen( $rev->getTimestamp() ) == strlen( 'YYYYMMDDHHMMSS' ) );
+		$this->assertContains( substr( $testTimestamp, 0, 10 ), $rev->getTimestamp() );
+	}
+
+	/**
+	 * @covers Revision::getUser
+	 * @covers Revision::getUserText
+	 */
+	public function testGetUserAndText() {
+		$sysop = $this->getTestSysop()->getUser();
+
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			__METHOD__,
+			0,
+			false,
+			$sysop
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( $sysop->getId(), $rev->getUser() );
+		$this->assertSame( $sysop->getName(), $rev->getUserText() );
+	}
+
+	/**
+	 * @covers Revision::isDeleted
+	 */
+	public function testIsDeleted_nothingDeleted() {
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( false, $rev->isDeleted( Revision::DELETED_TEXT ) );
+		$this->assertSame( false, $rev->isDeleted( Revision::DELETED_COMMENT ) );
+		$this->assertSame( false, $rev->isDeleted( Revision::DELETED_RESTRICTED ) );
+		$this->assertSame( false, $rev->isDeleted( Revision::DELETED_USER ) );
+	}
+
+	/**
+	 * @covers Revision::getVisibility
+	 */
+	public function testGetVisibility_nothingDeleted() {
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( 0, $rev->getVisibility() );
+	}
+
+	/**
+	 * @covers Revision::getComment
+	 */
+	public function testGetComment_notDeleted() {
+		$expectedSummary = 'goatlicious summary';
+
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			$expectedSummary
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( $expectedSummary, $rev->getComment() );
+	}
+
+	/**
+	 * This is a simple blanket test for all simple getters and is methods to provide some
+	 * coverage before the split of Revision into multiple classes for MCR work.
+	 * @covers Revision::isUnpatrolled
+	 */
+	public function testIsUnpatrolled_true() {
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( 0, $rev->isUnpatrolled() );
+	}
+
+	/**
+	 * This is a simple blanket test for all simple content getters and is methods to provide some
+	 * coverage before the split of Revision into multiple classes for MCR work.
+	 * @covers Revision::getContent
+	 * @covers Revision::getSerializedData
+	 * @covers Revision::getContentModel
+	 * @covers Revision::getContentFormat
+	 * @covers Revision::getContentHandler
+	 */
+	public function testSimpleContentGetters() {
+		$expectedText = 'testSimpleContentGetters in Revision. Goats love MCR...';
+		$expectedSummary = 'goatlicious testSimpleContentGetters summary';
+
+		$this->testPage->doEditContent(
+			new WikitextContent( $expectedText ),
+			$expectedSummary
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( $expectedText, $rev->getContent()->getNativeData() );
+		$this->assertSame( $expectedText, $rev->getSerializedData() );
+		$this->assertSame( $this->testPage->getContentModel(), $rev->getContentModel() );
+		$this->assertSame( $this->testPage->getContent()->getDefaultFormat(), $rev->getContentFormat() );
+		$this->assertSame( $this->testPage->getContentHandler(), $rev->getContentHandler() );
+	}
+
 }
