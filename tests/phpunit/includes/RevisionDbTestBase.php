@@ -1,12 +1,12 @@
 <?php
 
 /**
- * @group ContentHandler
- * @group Database
+ * RevisionDbTestBase contains test cases for the Revision class that have Database interactions.
  *
+ * @group Database
  * @group medium
  */
-class RevisionIntegrationTest extends MediaWikiTestCase {
+abstract class RevisionDbTestBase extends MediaWikiTestCase {
 
 	/**
 	 * @var WikiPage $testPage
@@ -67,11 +67,17 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 			]
 		);
 
+		$this->setMwGlobals( 'wgContentHandlerUseDB', $this->getContentHandlerUseDB() );
+
 		MWNamespace::clearCaches();
 		// Reset namespace cache
 		$wgContLang->resetNamespaces();
 		if ( !$this->testPage ) {
-			$this->testPage = WikiPage::factory( Title::newFromText( 'UTPage' ) );
+			/**
+			 * We have to create a new page for each subclass as the page creation may result
+			 * in different DB fields being filled based on configuration.
+			 */
+			$this->testPage = $this->createPage( __CLASS__, __CLASS__ );
 		}
 	}
 
@@ -84,6 +90,8 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 		// Reset namespace cache
 		$wgContLang->resetNamespaces();
 	}
+
+	abstract protected function getContentHandlerUseDB();
 
 	private function makeRevisionWithProps( $props = null ) {
 		if ( $props === null ) {
@@ -280,38 +288,16 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 
 	public function provideNewFromArchiveRow() {
 		yield [
-			true,
 			function ( $f ) {
 				return $f;
 			},
 		];
 		yield [
-			false,
-			function ( $f ) {
-				return $f;
-			},
-		];
-		yield [
-			true,
 			function ( $f ) {
 				return $f + [ 'ar_namespace', 'ar_title' ];
 			},
 		];
 		yield [
-			false,
-			function ( $f ) {
-				return $f + [ 'ar_namespace', 'ar_title' ];
-			},
-		];
-		yield [
-			true,
-			function ( $f ) {
-				unset( $f['ar_text_id'] );
-				return $f;
-			},
-		];
-		yield [
-			false,
 			function ( $f ) {
 				unset( $f['ar_text_id'] );
 				return $f;
@@ -323,9 +309,7 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 	 * @dataProvider provideNewFromArchiveRow
 	 * @covers Revision::newFromArchiveRow
 	 */
-	public function testNewFromArchiveRow( $contentHandlerUseDB, $selectModifier ) {
-		$this->setMwGlobals( 'wgContentHandlerUseDB', $contentHandlerUseDB );
-
+	public function testNewFromArchiveRow( $selectModifier ) {
 		$page = $this->createPage(
 			'RevisionStorageTest_testNewFromArchiveRow',
 			'Lorem Ipsum',
@@ -988,6 +972,379 @@ class RevisionIntegrationTest extends MediaWikiTestCase {
 				$this->testPage->getTitle(),
 				$this->testPage->getRevision()->getTimestamp()
 			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getParentLengths
+	 */
+	public function testGetParentLengths_noRevIds() {
+		$this->assertSame(
+			[],
+			Revision::getParentLengths(
+				wfGetDB( DB_MASTER ),
+				[]
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getParentLengths
+	 */
+	public function testGetParentLengths_oneRevId() {
+		$text = '831jr091jr0921kr21kr0921kjr0921j09rj1';
+		$textLength = strlen( $text );
+
+		$this->testPage->doEditContent( new WikitextContent( $text ), __METHOD__ );
+		$rev[1] = $this->testPage->getLatest();
+
+		$this->assertSame(
+			[ $rev[1] => strval( $textLength ) ],
+			Revision::getParentLengths(
+				wfGetDB( DB_MASTER ),
+				[ $rev[1] ]
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getParentLengths
+	 */
+	public function testGetParentLengths_multipleRevIds() {
+		$textOne = '831jr091jr0921kr21kr0921kjr0921j09rj1';
+		$textOneLength = strlen( $textOne );
+		$textTwo = '831jr091jr092121j09rj1';
+		$textTwoLength = strlen( $textTwo );
+
+		$this->testPage->doEditContent( new WikitextContent( $textOne ), __METHOD__ );
+		$rev[1] = $this->testPage->getLatest();
+		$this->testPage->doEditContent( new WikitextContent( $textTwo ), __METHOD__ );
+		$rev[2] = $this->testPage->getLatest();
+
+		$this->assertSame(
+			[ $rev[1] => strval( $textOneLength ), $rev[2] => strval( $textTwoLength ) ],
+			Revision::getParentLengths(
+				wfGetDB( DB_MASTER ),
+				[ $rev[1], $rev[2] ]
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getTitle
+	 */
+	public function testGetTitle_fromExistingRevision() {
+		$this->assertTrue(
+			$this->testPage->getTitle()->equals(
+				$this->testPage->getRevision()->getTitle()
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getTitle
+	 */
+	public function testGetTitle_fromRevisionWhichWillLoadTheTitle() {
+		$rev = new Revision( [ 'id' => $this->testPage->getLatest() ] );
+		$this->assertTrue(
+			$this->testPage->getTitle()->equals(
+				$rev->getTitle()
+			)
+		);
+	}
+
+	/**
+	 * @covers Revision::getTitle
+	 */
+	public function testGetTitle_forBadRevision() {
+		$rev = new Revision( [] );
+		$this->assertNull( $rev->getTitle() );
+	}
+
+	/**
+	 * @covers Revision::isMinor
+	 */
+	public function testIsMinor_true() {
+		// Use a sysop to ensure we can mark edits as minor
+		$sysop = $this->getTestSysop()->getUser();
+
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			__METHOD__,
+			EDIT_MINOR,
+			false,
+			$sysop
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( true, $rev->isMinor() );
+	}
+
+	/**
+	 * @covers Revision::isMinor
+	 */
+	public function testIsMinor_false() {
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			__METHOD__,
+			0
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( false, $rev->isMinor() );
+	}
+
+	/**
+	 * @covers Revision::getTimestamp
+	 */
+	public function testGetTimestamp() {
+		$testTimestamp = wfTimestampNow();
+
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			__METHOD__
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertInternalType( 'string', $rev->getTimestamp() );
+		$this->assertTrue( strlen( $rev->getTimestamp() ) == strlen( 'YYYYMMDDHHMMSS' ) );
+		$this->assertContains( substr( $testTimestamp, 0, 10 ), $rev->getTimestamp() );
+	}
+
+	/**
+	 * @covers Revision::getUser
+	 * @covers Revision::getUserText
+	 */
+	public function testGetUserAndText() {
+		$sysop = $this->getTestSysop()->getUser();
+
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			__METHOD__,
+			0,
+			false,
+			$sysop
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( $sysop->getId(), $rev->getUser() );
+		$this->assertSame( $sysop->getName(), $rev->getUserText() );
+	}
+
+	/**
+	 * @covers Revision::isDeleted
+	 */
+	public function testIsDeleted_nothingDeleted() {
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( false, $rev->isDeleted( Revision::DELETED_TEXT ) );
+		$this->assertSame( false, $rev->isDeleted( Revision::DELETED_COMMENT ) );
+		$this->assertSame( false, $rev->isDeleted( Revision::DELETED_RESTRICTED ) );
+		$this->assertSame( false, $rev->isDeleted( Revision::DELETED_USER ) );
+	}
+
+	/**
+	 * @covers Revision::getVisibility
+	 */
+	public function testGetVisibility_nothingDeleted() {
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( 0, $rev->getVisibility() );
+	}
+
+	/**
+	 * @covers Revision::getComment
+	 */
+	public function testGetComment_notDeleted() {
+		$expectedSummary = 'goatlicious summary';
+
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			$expectedSummary
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( $expectedSummary, $rev->getComment() );
+	}
+
+	/**
+	 * @covers Revision::isUnpatrolled
+	 */
+	public function testIsUnpatrolled_returnsRecentChangesId() {
+		$this->testPage->doEditContent( new WikitextContent( __METHOD__ ), __METHOD__ );
+		$rev = $this->testPage->getRevision();
+
+		$this->assertGreaterThan( 0, $rev->isUnpatrolled() );
+		$this->assertSame( $rev->getRecentChange()->getAttribute( 'rc_id' ), $rev->isUnpatrolled() );
+	}
+
+	/**
+	 * @covers Revision::isUnpatrolled
+	 */
+	public function testIsUnpatrolled_returnsZeroIfPatrolled() {
+		// This assumes that sysops are auto patrolled
+		$sysop = $this->getTestSysop()->getUser();
+		$this->testPage->doEditContent(
+			new WikitextContent( __METHOD__ ),
+			__METHOD__,
+			0,
+			false,
+			$sysop
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( 0, $rev->isUnpatrolled() );
+	}
+
+	/**
+	 * This is a simple blanket test for all simple content getters and is methods to provide some
+	 * coverage before the split of Revision into multiple classes for MCR work.
+	 * @covers Revision::getContent
+	 * @covers Revision::getSerializedData
+	 * @covers Revision::getContentModel
+	 * @covers Revision::getContentFormat
+	 * @covers Revision::getContentHandler
+	 */
+	public function testSimpleContentGetters() {
+		$expectedText = 'testSimpleContentGetters in Revision. Goats love MCR...';
+		$expectedSummary = 'goatlicious testSimpleContentGetters summary';
+
+		$this->testPage->doEditContent(
+			new WikitextContent( $expectedText ),
+			$expectedSummary
+		);
+		$rev = $this->testPage->getRevision();
+
+		$this->assertSame( $expectedText, $rev->getContent()->getNativeData() );
+		$this->assertSame( $expectedText, $rev->getSerializedData() );
+		$this->assertSame( $this->testPage->getContentModel(), $rev->getContentModel() );
+		$this->assertSame( $this->testPage->getContent()->getDefaultFormat(), $rev->getContentFormat() );
+		$this->assertSame( $this->testPage->getContentHandler(), $rev->getContentHandler() );
+	}
+
+	/**
+	 * @covers Revision::newKnownCurrent
+	 */
+	public function testNewKnownCurrent() {
+		// Setup the services
+		$cache = new WANObjectCache( [ 'cache' => new HashBagOStuff() ] );
+		$this->setService( 'MainWANObjectCache', $cache );
+		$db = wfGetDB( DB_MASTER );
+
+		// Get a fresh revision to use during testing
+		$this->testPage->doEditContent( new WikitextContent( __METHOD__ ), __METHOD__ );
+		$rev = $this->testPage->getRevision();
+
+		// Clear any previous cache for the revision during creation
+		$key = $cache->makeGlobalKey( 'revision', $db->getDomainID(), $rev->getPage(), $rev->getId() );
+		$cache->delete( $key, WANObjectCache::HOLDOFF_NONE );
+		$this->assertFalse( $cache->get( $key ) );
+
+		// Get the new revision and make sure it is in the cache and correct
+		$newRev = Revision::newKnownCurrent( $db, $rev->getPage(), $rev->getId() );
+		$this->assertRevEquals( $rev, $newRev );
+		$this->assertRevEquals( $rev, $cache->get( $key ) );
+	}
+
+	public function provideUserCanBitfield() {
+		yield [ 0, 0, [], null, true ];
+		// Bitfields match, user has no permissions
+		yield [ Revision::DELETED_TEXT, Revision::DELETED_TEXT, [], null, false ];
+		yield [ Revision::DELETED_COMMENT, Revision::DELETED_COMMENT, [], null, false ];
+		yield [ Revision::DELETED_USER, Revision::DELETED_USER, [], null, false ];
+		yield [ Revision::DELETED_RESTRICTED, Revision::DELETED_RESTRICTED, [], null, false ];
+		// Bitfields match, user (admin) does have permissions
+		yield [ Revision::DELETED_TEXT, Revision::DELETED_TEXT, [ 'sysop' ], null, true ];
+		yield [ Revision::DELETED_COMMENT, Revision::DELETED_COMMENT, [ 'sysop' ], null, true ];
+		yield [ Revision::DELETED_USER, Revision::DELETED_USER, [ 'sysop' ], null, true ];
+		// Bitfields match, user (admin) does not have permissions
+		yield [ Revision::DELETED_RESTRICTED, Revision::DELETED_RESTRICTED, [ 'sysop' ], null, false ];
+		// Bitfields match, user (oversight) does have permissions
+		yield [ Revision::DELETED_RESTRICTED, Revision::DELETED_RESTRICTED, [ 'oversight' ], null, true ];
+		// Check permissions using the title
+		yield [
+			Revision::DELETED_TEXT,
+			Revision::DELETED_TEXT,
+			[ 'sysop' ],
+			Title::newFromText( __METHOD__ ),
+			true,
+		];
+		yield [
+			Revision::DELETED_TEXT,
+			Revision::DELETED_TEXT,
+			[],
+			Title::newFromText( __METHOD__ ),
+			false,
+		];
+	}
+
+	/**
+	 * @dataProvider provideUserCanBitfield
+	 * @covers Revision::userCanBitfield
+	 */
+	public function testUserCanBitfield( $bitField, $field, $userGroups, $title, $expected ) {
+		$this->setMwGlobals(
+			'wgGroupPermissions',
+			[
+				'sysop' => [
+					'deletedtext' => true,
+					'deletedhistory' => true,
+				],
+				'oversight' => [
+					'viewsuppressed' => true,
+					'suppressrevision' => true,
+				],
+			]
+		);
+		$user = $this->getTestUser( $userGroups )->getUser();
+
+		$this->assertSame(
+			$expected,
+			Revision::userCanBitfield( $bitField, $field, $user, $title )
+		);
+	}
+
+	public function provideUserCan() {
+		yield [ 0, 0, [], true ];
+		// Bitfields match, user has no permissions
+		yield [ Revision::DELETED_TEXT, Revision::DELETED_TEXT, [], false ];
+		yield [ Revision::DELETED_COMMENT, Revision::DELETED_COMMENT, [], false ];
+		yield [ Revision::DELETED_USER, Revision::DELETED_USER, [], false ];
+		yield [ Revision::DELETED_RESTRICTED, Revision::DELETED_RESTRICTED, [], false ];
+		// Bitfields match, user (admin) does have permissions
+		yield [ Revision::DELETED_TEXT, Revision::DELETED_TEXT, [ 'sysop' ], true ];
+		yield [ Revision::DELETED_COMMENT, Revision::DELETED_COMMENT, [ 'sysop' ], true ];
+		yield [ Revision::DELETED_USER, Revision::DELETED_USER, [ 'sysop' ], true ];
+		// Bitfields match, user (admin) does not have permissions
+		yield [ Revision::DELETED_RESTRICTED, Revision::DELETED_RESTRICTED, [ 'sysop' ], false ];
+		// Bitfields match, user (oversight) does have permissions
+		yield [ Revision::DELETED_RESTRICTED, Revision::DELETED_RESTRICTED, [ 'oversight' ], true ];
+	}
+
+	/**
+	 * @dataProvider provideUserCan
+	 * @covers Revision::userCan
+	 */
+	public function testUserCan( $bitField, $field, $userGroups, $expected ) {
+		$this->setMwGlobals(
+			'wgGroupPermissions',
+			[
+				'sysop' => [
+					'deletedtext' => true,
+					'deletedhistory' => true,
+				],
+				'oversight' => [
+					'viewsuppressed' => true,
+					'suppressrevision' => true,
+				],
+			]
+		);
+		$user = $this->getTestUser( $userGroups )->getUser();
+		$revision = new Revision( [ 'deleted' => $bitField ] );
+
+		$this->assertSame(
+			$expected,
+			$revision->userCan( $field, $user )
 		);
 	}
 

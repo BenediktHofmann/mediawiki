@@ -544,28 +544,7 @@ class Html {
 			if ( in_array( $key, self::$boolAttribs ) ) {
 				$ret .= " $key=\"\"";
 			} else {
-				// Apparently we need to entity-encode \n, \r, \t, although the
-				// spec doesn't mention that.  Since we're doing strtr() anyway,
-				// we may as well not call htmlspecialchars().
-				// @todo FIXME: Verify that we actually need to
-				// escape \n\r\t here, and explain why, exactly.
-				// We could call Sanitizer::encodeAttribute() for this, but we
-				// don't because we're stubborn and like our marginal savings on
-				// byte size from not having to encode unnecessary quotes.
-				// The only difference between this transform and the one by
-				// Sanitizer::encodeAttribute() is ' is not encoded.
-				$map = [
-					'&' => '&amp;',
-					'"' => '&quot;',
-					'>' => '&gt;',
-					// '<' allegedly allowed per spec
-					// but breaks some tools if not escaped.
-					"<" => '&lt;',
-					"\n" => '&#10;',
-					"\r" => '&#13;',
-					"\t" => '&#9;'
-				];
-				$ret .= " $key=$quote" . strtr( $value, $map ) . $quote;
+				$ret .= " $key=$quote" . Sanitizer::encodeAttribute( $value ) . $quote;
 			}
 		}
 		return $ret;
@@ -694,6 +673,52 @@ class Html {
 		}
 
 		return self::input( $name, $value, 'checkbox', $attribs );
+	}
+
+	/**
+	 * Return the HTML for a message box.
+	 * @since 1.31
+	 * @param string $html of contents of box
+	 * @param string $className corresponding to box
+	 * @param string $heading (optional)
+	 * @return string of HTML representing a box.
+	 */
+	public static function messageBox( $html, $className, $heading = '' ) {
+		if ( $heading ) {
+			$html = self::element( 'h2', [], $heading ) . $html;
+		}
+		return self::rawElement( 'div', [ 'class' => $className ], $html );
+	}
+
+	/**
+	 * Return a warning box.
+	 * @since 1.31
+	 * @param string $html of contents of box
+	 * @return string of HTML representing a warning box.
+	 */
+	public static function warningBox( $html ) {
+		return self::messageBox( $html, 'warningbox' );
+	}
+
+	/**
+	 * Return an error box.
+	 * @since 1.31
+	 * @param string $html of contents of error box
+	 * @param string $heading (optional)
+	 * @return string of HTML representing an error box.
+	 */
+	public static function errorBox( $html, $heading = '' ) {
+		return self::messageBox( $html, 'errorbox', $heading );
+	}
+
+	/**
+	 * Return a success box.
+	 * @since 1.31
+	 * @param string $html of contents of box
+	 * @return string of HTML representing a success box.
+	 */
+	public static function successBox( $html ) {
+		return self::messageBox( $html, 'successbox' );
 	}
 
 	/**
