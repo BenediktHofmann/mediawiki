@@ -19,7 +19,8 @@
 			"Pirehelokan",
 			"Diyariq",
 			"Sarchia",
-			"Lost Whispers"
+			"Lost Whispers",
+			"Épine"
 		]
 	},
 	"tog-underline": "ھێڵ ھێنان بەژێر بەستەرەکان:",
@@ -437,7 +438,7 @@
 	"nosuchusershort": "بەکارھێنەرێک بە ناوی «$1»ەوە نیە.\nبە نووسراوەکەتدا بچۆرەوە.",
 	"nouserspecified": "دەبێت ناوێکی بەکارھێنەری دەستنیشان بکەیت.",
 	"login-userblocked": "ئەم بەکارهێنەرە بڵۆک کراوە. چوونەژوورەوە ڕێگەپێنەدراوە.",
-	"wrongpassword": "تێپەڕوشەی ھەڵە.\nتکایە دووبارە تێبکۆشە.",
+	"wrongpassword": "ناوی بەکارھێنەر یان تێپەڕوشە ھەڵەیە.\nتکایە دووبارە ھەوڵبدەرەوە.",
 	"wrongpasswordempty": "تێپەڕەوشەی لێدراو بەتاڵبوو.\nتکایە هەوڵ بدەوە.",
 	"passwordtooshort": "تێپەڕوشەکەت لانی کەم دەبێ {{PLURAL:$1|١ پیت|$1 پیت}} بێت.",
 	"passwordtoolong": "تێپەڕ وشەکان ناتوانرێت لە {{PLURAL:$1|١ کارەکتەر|$1 کارەکتەر}} درێژتر بێت.",
@@ -918,6 +919,7 @@
 	"timezoneregion-indian": "ئوقیانووسی ھیند",
 	"timezoneregion-pacific": "ئۆقیانووسی ئارام",
 	"allowemail": "ڕێگە بدە بە بەکارھێنەرانی تر کە ئیمەیلم بۆ بنێرن",
+	"email-blacklist-label": "ڕێگری لە ناردنی پۆستی ئەلیکترۆنی لە لایەن ئەم بەکارھێنەرانە بکە:",
 	"prefs-searchoptions": "گەڕان",
 	"prefs-namespaces": "بۆشایی ناوەکان",
 	"default": "بنچینەیی",
@@ -1204,7 +1206,6 @@
 	"rcfilters-filter-newpages-label": "دروستکردنی پەڕەکان",
 	"rcfilters-filter-categorization-label": "گۆڕانکاری پۆلەکان",
 	"rcfilters-filter-logactions-label": "کردارە لۆگییەکان",
-	"rcfilters-view-advanced-filters-label": "پاڵوێنە پێشکەوتووەکان",
 	"rcnotefrom": "ژێرەوە {{PLURAL:$5|گۆڕانکارییەکەیە|گۆڕانکارییەکانە}} لە <strong>$3، $4</strong>ەوە (ھەتا <strong>$1</strong> نیشان دراوە).",
 	"rclistfrom": "گۆڕانکارییە نوێکان نیشان بدە بە دەستپێکردن لە $3 $2",
 	"rcshowhideminor": "دەستکارییە بچووکەکان $1",
@@ -2836,6 +2837,7 @@
 	"logentry-delete-delete": "$1 پەڕەی $3ی {{GENDER:$2|سڕییەوە}}",
 	"logentry-delete-delete_redir": "$1 {{GENDER:$2|ڕەوانەکەری}} $3 سڕیەوە",
 	"logentry-delete-restore": "$1 پەڕەی $3ی {{GENDER:$2|ھێنایەوە}} ($4)",
+	"restore-count-revisions": "{{PLURAL:$1|$1 پێداچوونەوە}} هێنرایەوە",
 	"logentry-delete-revision": "$1 دەرکەوتنی {{PLURAL:$5|پێداچوونەوەیەکی|$5 پێداچوونەوەی}} پەڕەی $3ی {{GENDER:$2|گۆڕیی}}: $4",
 	"logentry-suppress-delete": "$1 پەڕەی $3 {{GENDER:$2|بەرگری کرد}}.",
 	"revdelete-content-hid": "ناوەرۆک شاردراوە",

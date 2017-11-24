@@ -63,13 +63,25 @@
 	 * @return {mw.Uri} Updated Uri
 	 */
 	mw.rcfilters.UriProcessor.prototype.getUpdatedUri = function ( uriQuery ) {
-		var uri = new mw.Uri(),
+		var titlePieces,
+			uri = new mw.Uri(),
 			unrecognizedParams = this.getUnrecognizedParams( uriQuery || uri.query );
 
 		if ( uriQuery ) {
 			// This is mainly for tests, to be able to give the method
 			// an initial URI Query and test that it retains parameters
 			uri.query = uriQuery;
+		}
+
+		// Normalize subpage to use &target= so we are always
+		// consistent in Special:RecentChangesLinked between the
+		// ?title=Special:RecentChangesLinked/TargetPage and
+		// ?title=Special:RecentChangesLinked&target=TargetPage
+		if ( uri.query.title && uri.query.title.indexOf( '/' ) !== -1 ) {
+			titlePieces = uri.query.title.split( '/' );
+
+			unrecognizedParams.title = titlePieces.shift();
+			unrecognizedParams.target = titlePieces.join( '/' );
 		}
 
 		uri.query = this.filtersModel.getMinimizedParamRepresentation(
@@ -85,12 +97,8 @@
 			)
 		);
 
-		// Remove excluded params from the url
-		uri.query = this.filtersModel.removeExcludedParams( uri.query );
-
 		// Reapply unrecognized params and url version
 		uri.query = $.extend( true, {}, uri.query, unrecognizedParams, { urlversion: '2' } );
-
 		return uri;
 	};
 

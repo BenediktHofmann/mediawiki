@@ -1150,6 +1150,7 @@ class Sanitizer {
 			'{'    => '&#123;',
 			'}'    => '&#125;', // prevent unpaired language conversion syntax
 			'['    => '&#91;',
+			']'    => '&#93;',
 			"''"   => '&#39;&#39;',
 			'ISBN' => '&#73;SBN',
 			'RFC'  => '&#82;FC',
@@ -1967,17 +1968,22 @@ class Sanitizer {
 	 * Warning: this return value must be further escaped for literal
 	 * inclusion in HTML output as of 1.10!
 	 *
-	 * @param string $text HTML fragment
+	 * @param string $html HTML fragment
 	 * @return string
 	 */
-	static function stripAllTags( $text ) {
-		# Actual <tags>
-		$text = StringUtils::delimiterReplace( '<', '>', '', $text );
+	static function stripAllTags( $html ) {
+		// Use RemexHtml to tokenize $html and extract the text
+		$handler = new RemexStripTagHandler;
+		$tokenizer = new RemexHtml\Tokenizer\Tokenizer( $handler, $html, [
+			'ignoreErrors' => true,
+			// don't ignore char refs, we want them to be decoded
+			'ignoreNulls' => true,
+			'skipPreprocess' => true,
+		] );
+		$tokenizer->execute();
+		$text = $handler->getResult();
 
-		# Normalize &entities and whitespace
-		$text = self::decodeCharReferences( $text );
 		$text = self::normalizeWhitespace( $text );
-
 		return $text;
 	}
 

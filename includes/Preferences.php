@@ -48,9 +48,6 @@ use MediaWiki\MediaWikiServices;
  */
 class Preferences {
 	/** @var array */
-	protected static $defaultPreferences = null;
-
-	/** @var array */
 	protected static $saveFilters = [
 		'timecorrection' => [ 'Preferences', 'filterTimezoneInput' ],
 		'rclimit' => [ 'Preferences', 'filterIntval' ],
@@ -78,10 +75,6 @@ class Preferences {
 	 * @return array|null
 	 */
 	static function getPreferences( $user, IContextSource $context ) {
-		if ( self::$defaultPreferences ) {
-			return self::$defaultPreferences;
-		}
-
 		OutputPage::setupOOUI(
 			strtolower( $context->getSkin()->getSkinName() ),
 			$context->getLanguage()->getDir()
@@ -103,7 +96,6 @@ class Preferences {
 		Hooks::run( 'GetPreferences', [ $user, &$defaultPreferences ] );
 
 		self::loadPreferenceValues( $user, $context, $defaultPreferences );
-		self::$defaultPreferences = $defaultPreferences;
 		return $defaultPreferences;
 	}
 
@@ -1142,18 +1134,20 @@ class Preferences {
 			$defaultPreferences['watchlisttoken'] = [
 				'type' => 'api',
 			];
+
+			$tokenButton = new OOUI\ButtonWidget( [
+				'href' => SpecialPage::getTitleFor( 'ResetTokens' )->getLinkURL( [
+					'returnto' => SpecialPage::getTitleFor( 'Preferences' )->getPrefixedText()
+				] ),
+				'label' => $context->msg( 'prefs-watchlist-managetokens' )->text(),
+			] );
 			$defaultPreferences['watchlisttoken-info'] = [
 				'type' => 'info',
 				'section' => 'watchlist/tokenwatchlist',
 				'label-message' => 'prefs-watchlist-token',
-				'default' => $user->getTokenFromOption( 'watchlisttoken' ),
-				'help-message' => 'prefs-help-watchlist-token2',
-			];
-			$defaultPreferences['watchlisttoken-info2'] = [
-				'type' => 'info',
-				'section' => 'watchlist/tokenwatchlist',
+				'help-message' => 'prefs-help-tokenmanagement',
 				'raw' => true,
-				'default' => $context->msg( 'prefs-help-watchlist-token2' )->parse(),
+				'default' => (string)$tokenButton,
 			];
 		}
 	}
