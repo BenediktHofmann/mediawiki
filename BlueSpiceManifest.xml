@@ -6,7 +6,7 @@
 	repository="https://github.com/hallowelt/mediawiki"
 	branch="REL1_27_univention"
 	package="BlueSpice Free univention"
-	system="docker"
+	system="univention"
 	installLocation="/var/www/bluespice"
 	configLocation="/etc/bluespice"
 	dataLocation="/var/bluespice"
