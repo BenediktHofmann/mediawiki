@@ -1922,7 +1922,10 @@ return [
 		],
 	],
 	'mediawiki.special' => [
-		'styles' => 'resources/src/mediawiki.special/mediawiki.special.css',
+		'styles' => [
+			'resources/src/mediawiki.special/mediawiki.special.css',
+			'resources/src/mediawiki.special/mediawiki.special.userrights.css',
+		],
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.special.apisandbox.styles' => [
@@ -1972,6 +1975,8 @@ return [
 			'api-help-param-integer-minmax',
 			'api-help-param-multi-separate',
 			'api-help-param-multi-max',
+			'api-help-param-maxbytes',
+			'api-help-param-maxchars',
 			'apisandbox-submit-invalid-fields-title',
 			'apisandbox-submit-invalid-fields-message',
 			'apisandbox-results',
@@ -2103,6 +2108,7 @@ return [
 			'mediawiki.notification.convertmessagebox',
 			'oojs-ui-widgets',
 			'mediawiki.widgets.SelectWithInputWidget',
+			'mediawiki.editfont.styles',
 		],
 	],
 	'mediawiki.special.preferences.styles.ooui' => [
@@ -2229,7 +2235,6 @@ return [
 		],
 	],
 	'mediawiki.special.userrights' => [
-		'styles' => 'resources/src/mediawiki.special/mediawiki.special.userrights.css',
 		'scripts' => 'resources/src/mediawiki.special/mediawiki.special.userrights.js',
 		'dependencies' => [
 			'mediawiki.notification.convertmessagebox',
@@ -2744,6 +2749,7 @@ return [
 			'oojs-ui.styles.icons-moderation',
 		],
 		'messages' => [
+			'ooui-item-remove',
 			'ooui-outline-control-move-down',
 			'ooui-outline-control-move-up',
 			'ooui-outline-control-remove',

@@ -135,6 +135,9 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	const TTL_LAGGED = 30;
 	/** Idiom for delete() for "no hold-off" */
 	const HOLDOFF_NONE = 0;
+	/** Idiom for set() for "do not augment the storage medium TTL" */
+	const STALE_TTL_NONE = 0;
+
 	/** Idiom for getWithSetCallback() for "no minimum required as-of timestamp" */
 	const MIN_TIMESTAMP_NONE = 0.0;
 
@@ -204,7 +207,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	 * @return WANObjectCache
 	 */
 	public static function newEmpty() {
-		return new self( [
+		return new static( [
 			'cache'   => new EmptyBagOStuff(),
 			'pool'    => 'empty'
 		] );
@@ -311,7 +314,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 			$wrappedValues += $this->cache->getMulti( $keysGet );
 		}
 		// Time used to compare/init "check" keys (derived after getMulti() to be pessimistic)
-		$now = microtime( true );
+		$now = $this->getCurrentTime();
 
 		// Collect timestamps from all "check" keys
 		$purgeValuesForAll = $this->processCheckKeys( $checkKeysForAll, $wrappedValues, $now );
@@ -426,24 +429,25 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	 *      they certainly should not see ones that ended up getting rolled back.
 	 *      Default: false
 	 *   - lockTSE : if excessive replication/snapshot lag is detected, then store the value
-	 *      with this TTL and flag it as stale. This is only useful if the reads for
-	 *      this key use getWithSetCallback() with "lockTSE" set.
+	 *      with this TTL and flag it as stale. This is only useful if the reads for this key
+	 *      use getWithSetCallback() with "lockTSE" set. Note that if "staleTTL" is set
+	 *      then it will still add on to this TTL in the excessive lag scenario.
 	 *      Default: WANObjectCache::TSE_NONE
 	 *   - staleTTL : Seconds to keep the key around if it is stale. The get()/getMulti()
 	 *      methods return such stale values with a $curTTL of 0, and getWithSetCallback()
 	 *      will call the regeneration callback in such cases, passing in the old value
 	 *      and its as-of time to the callback. This is useful if adaptiveTTL() is used
 	 *      on the old value's as-of time when it is verified as still being correct.
-	 *      Default: 0.
+	 *      Default: WANObjectCache::STALE_TTL_NONE.
 	 * @note Options added in 1.28: staleTTL
 	 * @return bool Success
 	 */
 	final public function set( $key, $value, $ttl = 0, array $opts = [] ) {
-		$now = microtime( true );
+		$now = $this->getCurrentTime();
 		$lockTSE = isset( $opts['lockTSE'] ) ? $opts['lockTSE'] : self::TSE_NONE;
+		$staleTTL = isset( $opts['staleTTL'] ) ? $opts['staleTTL'] : self::STALE_TTL_NONE;
 		$age = isset( $opts['since'] ) ? max( 0, $now - $opts['since'] ) : 0;
 		$lag = isset( $opts['lag'] ) ? $opts['lag'] : 0;
-		$staleTTL = isset( $opts['staleTTL'] ) ? $opts['staleTTL'] : 0;
 
 		// Do not cache potentially uncommitted data as it might get rolled back
 		if ( !empty( $opts['pending'] ) ) {
@@ -590,7 +594,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 			$time = $purge[self::FLD_TIME];
 		} else {
 			// Casting assures identical floats for the next getCheckKeyTime() calls
-			$now = (string)microtime( true );
+			$now = (string)$this->getCurrentTime();
 			$this->cache->add( $key,
 				$this->makePurgeValue( $now, self::HOLDOFF_TTL ),
 				self::CHECK_KEY_TTL
@@ -917,7 +921,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 					// Value existed before with a different version; use variant key.
 					// Reflect purges to $key by requiring that this key value be newer.
 					$value = $this->doGetWithSetCallback(
-						'cache-variant:' . md5( $key ) . ":$version",
+						$this->makeGlobalKey( 'WANCache-key-variant', md5( $key ), $version ),
 						$ttl,
 						$callback,
 						// Regenerate value if not newer than $key
@@ -968,7 +972,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 		$cValue = $this->get( $key, $curTTL, $checkKeys, $asOf ); // current value
 		$value = $cValue; // return value
 
-		$preCallbackTime = microtime( true );
+		$preCallbackTime = $this->getCurrentTime();
 		// Determine if a cached value regeneration is needed or desired
 		if ( $value !== false
 			&& $curTTL > 0
@@ -1044,7 +1048,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 		// so use a special INTERIM key to pass the new value around threads.
 		if ( ( $isTombstone && $lockTSE > 0 ) && $valueIsCacheable ) {
 			$tempTTL = max( 1, (int)$lockTSE ); // set() expects seconds
-			$newAsOf = microtime( true );
+			$newAsOf = $this->getCurrentTime();
 			$wrapped = $this->wrap( $value, $tempTTL, $newAsOf );
 			// Avoid using set() to avoid pointless mcrouter broadcasting
 			$this->setInterimValue( $key, $wrapped, $tempTTL );
@@ -1077,7 +1081,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	 */
 	protected function getInterimValue( $key, $versioned, $minTime, &$asOf ) {
 		$wrapped = $this->cache->get( self::INTERIM_KEY_PREFIX . $key );
-		list( $value ) = $this->unwrap( $wrapped, microtime( true ) );
+		list( $value ) = $this->unwrap( $wrapped, $this->getCurrentTime() );
 		if ( $value !== false && $this->isValid( $value, $versioned, $asOf, $minTime ) ) {
 			$asOf = $wrapped[self::FLD_TIME];
 
@@ -1388,21 +1392,23 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 
 	/**
 	 * @see BagOStuff::makeKey()
-	 * @param string $keys,... Key component (starting with a key collection name)
+	 * @param string $class Key class
+	 * @param string $component [optional] Key component (starting with a key collection name)
 	 * @return string Colon-delimited list of $keyspace followed by escaped components of $args
 	 * @since 1.27
 	 */
-	public function makeKey() {
+	public function makeKey( $class, $component = null ) {
 		return call_user_func_array( [ $this->cache, __FUNCTION__ ], func_get_args() );
 	}
 
 	/**
 	 * @see BagOStuff::makeGlobalKey()
-	 * @param string $keys,... Key component (starting with a key collection name)
+	 * @param string $class Key class
+	 * @param string $component [optional] Key component (starting with a key collection name)
 	 * @return string Colon-delimited list of $keyspace followed by escaped components of $args
 	 * @since 1.27
 	 */
-	public function makeGlobalKey() {
+	public function makeGlobalKey( $class, $component = null ) {
 		return call_user_func_array( [ $this->cache, __FUNCTION__ ], func_get_args() );
 	}
 
@@ -1533,7 +1539,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 		if ( $this->purgeRelayer instanceof EventRelayerNull ) {
 			// This handles the mcrouter and the single-DC case
 			$ok = $this->cache->set( $key,
-				$this->makePurgeValue( microtime( true ), self::HOLDOFF_NONE ),
+				$this->makePurgeValue( $this->getCurrentTime(), self::HOLDOFF_NONE ),
 				$ttl
 			);
 		} else {
@@ -1592,7 +1598,9 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	 * @return bool
 	 */
 	protected function worthRefreshExpiring( $curTTL, $lowTTL ) {
-		if ( $curTTL >= $lowTTL ) {
+		if ( $lowTTL <= 0 ) {
+			return false;
+		} elseif ( $curTTL >= $lowTTL ) {
 			return false;
 		} elseif ( $curTTL <= 0 ) {
 			return true;
@@ -1619,6 +1627,10 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	 * @return bool
 	 */
 	protected function worthRefreshPopular( $asOf, $ageNew, $timeTillRefresh, $now ) {
+		if ( $ageNew < 0 || $timeTillRefresh <= 0 ) {
+			return false;
+		}
+
 		$age = $now - $asOf;
 		$timeOld = $age - $ageNew;
 		if ( $timeOld <= 0 ) {
@@ -1738,6 +1750,14 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 		$parts = explode( ':', $key );
 
 		return isset( $parts[1] ) ? $parts[1] : $parts[0]; // sanity
+	}
+
+	/**
+	 * @return float UNIX timestamp
+	 * @codeCoverageIgnore
+	 */
+	protected function getCurrentTime() {
+		return microtime( true );
 	}
 
 	/**
