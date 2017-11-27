@@ -5,7 +5,7 @@
 	versionName="v2.27.2-univention.1"
 	repository="https://github.com/hallowelt/mediawiki"
 	branch="REL1_27_univention"
-	package="BlueSpice Free univention"
+	package="BlueSpice free univention"
 	system="univention"
 	installLocation="/var/www/bluespice"
 	configLocation="/etc/bluespice"
