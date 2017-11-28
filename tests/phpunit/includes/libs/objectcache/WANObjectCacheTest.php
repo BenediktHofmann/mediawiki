@@ -17,7 +17,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers WANObjectCache::setInterimValue
  */
 class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
-	/** @var WANObjectCache */
+	/** @var TimeAdjustableWANObjectCache */
 	private $cache;
 	/** @var BagOStuff */
 	private $internalCache;
@@ -25,8 +25,8 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 	protected function setUp() {
 		parent::setUp();
 
-		$this->cache = new WANObjectCache( [
-			'cache' => new HashBagOStuff(),
+		$this->cache = new TimeAdjustableWANObjectCache( [
+			'cache' => new TimeAdjustableHashBagOStuff(),
 			'pool' => 'testcache-hash',
 			'relayer' => new EventRelayerNull( [] )
 		] );
@@ -215,15 +215,16 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$this->assertGreaterThanOrEqual( 19, $curTTL, 'Current TTL between 19-20 (overriden)' );
 
 		$wasSet = 0;
-		$v = $cache->getWithSetCallback( $key, 30, $func, [
-				'lowTTL' => 0,
-				'lockTSE' => 5,
-			] + $extOpts );
+		$v = $cache->getWithSetCallback(
+			$key, 30, $func, [ 'lowTTL' => 0, 'lockTSE' => 5 ] + $extOpts );
 		$this->assertEquals( $value, $v, "Value returned" );
 		$this->assertEquals( 0, $wasSet, "Value not regenerated" );
 
-		$priorTime = microtime( true );
-		usleep( 1 );
+		$priorTime = microtime( true ); // reference time
+		$cache->setTime( $priorTime );
+
+		$cache->addTime( 1 );
+
 		$wasSet = 0;
 		$v = $cache->getWithSetCallback(
 			$key, 30, $func, [ 'checkKeys' => [ $cKey1, $cKey2 ] ] + $extOpts
@@ -237,7 +238,8 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$t2 = $cache->getCheckKeyTime( $cKey2 );
 		$this->assertGreaterThanOrEqual( $priorTime, $t2, 'Check keys generated on miss' );
 
-		$priorTime = microtime( true );
+		$priorTime = $cache->addTime( 0.01 );
+
 		$wasSet = 0;
 		$v = $cache->getWithSetCallback(
 			$key, 30, $func, [ 'checkKeys' => [ $cKey1, $cKey2 ] ] + $extOpts
@@ -267,11 +269,6 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$this->assertEquals( $value, $v, "Value still returned after deleted" );
 		$this->assertEquals( 1, $wasSet, "Value process cached while deleted" );
 
-		$backToTheFutureCache = new TimeAdjustableWANObjectCache( [
-			'cache'   => new TimeAdjustableHashBagOStuff(),
-			'pool'    => 'empty'
-		] );
-
 		$oldValReceived = -1;
 		$oldAsOfReceived = -1;
 		$checkFunc = function ( $oldVal, &$ttl, array $setOpts, $oldAsOf )
@@ -283,29 +280,84 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 			return 'xxx' . $wasSet;
 		};
 
+		$now = microtime( true ); // reference time
+
 		$wasSet = 0;
 		$key = wfRandomString();
-		$v = $backToTheFutureCache->getWithSetCallback(
+		$v = $cache->getWithSetCallback(
 			$key, 30, $checkFunc, [ 'staleTTL' => 50 ] + $extOpts );
 		$this->assertEquals( 'xxx1', $v, "Value returned" );
 		$this->assertEquals( false, $oldValReceived, "Callback got no stale value" );
 		$this->assertEquals( null, $oldAsOfReceived, "Callback got no stale value" );
 
-		$backToTheFutureCache->setTime( microtime( true ) + 40 );
-		$v = $backToTheFutureCache->getWithSetCallback(
+		$cache->addTime( 40 );
+		$v = $cache->getWithSetCallback(
 			$key, 30, $checkFunc, [ 'staleTTL' => 50 ] + $extOpts );
 		$this->assertEquals( 'xxx2', $v, "Value still returned after expired" );
 		$this->assertEquals( 2, $wasSet, "Value recalculated while expired" );
 		$this->assertEquals( 'xxx1', $oldValReceived, "Callback got stale value" );
 		$this->assertNotEquals( null, $oldAsOfReceived, "Callback got stale value" );
 
-		$backToTheFutureCache->setTime( microtime( true ) + 300 );
-		$v = $backToTheFutureCache->getWithSetCallback(
+		$cache->addTime( 260 );
+		$v = $cache->getWithSetCallback(
 			$key, 30, $checkFunc, [ 'staleTTL' => 50 ] + $extOpts );
 		$this->assertEquals( 'xxx3', $v, "Value still returned after expired" );
 		$this->assertEquals( 3, $wasSet, "Value recalculated while expired" );
 		$this->assertEquals( false, $oldValReceived, "Callback got no stale value" );
 		$this->assertEquals( null, $oldAsOfReceived, "Callback got no stale value" );
+
+		$wasSet = 0;
+		$key = wfRandomString();
+		$checkKey = $cache->makeKey( 'template', 'X' );
+		$cache->setTime( $now - $cache::HOLDOFF_TTL - 1 );
+		$cache->touchCheckKey( $checkKey ); // init check key
+		$cache->setTime( $now );
+		$v = $cache->getWithSetCallback(
+			$key,
+			$cache::TTL_INDEFINITE,
+			$checkFunc,
+			[ 'graceTTL' => $cache::TTL_WEEK, 'checkKeys' => [ $checkKey ] ] + $extOpts
+		);
+		$this->assertEquals( 'xxx1', $v, "Value returned" );
+		$this->assertEquals( 1, $wasSet, "Value computed" );
+		$this->assertEquals( false, $oldValReceived, "Callback got no stale value" );
+		$this->assertEquals( null, $oldAsOfReceived, "Callback got no stale value" );
+
+		$cache->addTime( $cache::TTL_HOUR ); // some time passes
+		$v = $cache->getWithSetCallback(
+			$key,
+			$cache::TTL_INDEFINITE,
+			$checkFunc,
+			[ 'graceTTL' => $cache::TTL_WEEK, 'checkKeys' => [ $checkKey ] ] + $extOpts
+		);
+		$this->assertEquals( 'xxx1', $v, "Cached value returned" );
+		$this->assertEquals( 1, $wasSet, "Cached value returned" );
+
+		$cache->touchCheckKey( $checkKey ); // make key stale
+		$cache->addTime( 0.01 ); // ~1 week left of grace (barely stale to avoid refreshes)
+
+		$v = $cache->getWithSetCallback(
+			$key,
+			$cache::TTL_INDEFINITE,
+			$checkFunc,
+			[ 'graceTTL' => $cache::TTL_WEEK, 'checkKeys' => [ $checkKey ] ] + $extOpts
+		);
+		$this->assertEquals( 'xxx1', $v, "Value still returned after expired (in grace)" );
+		$this->assertEquals( 1, $wasSet, "Value still returned after expired (in grace)" );
+
+		// Change of refresh increase to unity as staleness approaches graceTTL
+
+		$cache->addTime( $cache::TTL_WEEK ); // 8 days of being stale
+		$v = $cache->getWithSetCallback(
+			$key,
+			$cache::TTL_INDEFINITE,
+			$checkFunc,
+			[ 'graceTTL' => $cache::TTL_WEEK, 'checkKeys' => [ $checkKey ] ] + $extOpts
+		);
+		$this->assertEquals( 'xxx2', $v, "Value was recomputed (past grace)" );
+		$this->assertEquals( 2, $wasSet, "Value was recomputed (past grace)" );
+		$this->assertEquals( 'xxx1', $oldValReceived, "Callback got post-grace stale value" );
+		$this->assertNotEquals( null, $oldAsOfReceived, "Callback got post-grace stale value" );
 	}
 
 	public static function getWithSetCallback_provider() {
@@ -443,8 +495,11 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$this->assertEquals( 1, $wasSet, "Value not regenerated" );
 		$this->assertEquals( 0, $cache->getWarmupKeyMisses(), "Keys warmed in process cache" );
 
-		$priorTime = microtime( true );
-		usleep( 1 );
+		$priorTime = microtime( true ); // reference time
+		$cache->setTime( $priorTime );
+
+		$cache->addTime( 1 );
+
 		$wasSet = 0;
 		$keyedIds = new ArrayIterator( [ $keyB => 'efef' ] );
 		$v = $cache->getMultiWithSetCallback(
@@ -459,7 +514,7 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$t2 = $cache->getCheckKeyTime( $cKey2 );
 		$this->assertGreaterThanOrEqual( $priorTime, $t2, 'Check keys generated on miss' );
 
-		$priorTime = microtime( true );
+		$priorTime = $cache->addTime( 0.01 );
 		$value = "@43636$";
 		$wasSet = 0;
 		$keyedIds = new ArrayIterator( [ $keyC => 43636 ] );
@@ -609,8 +664,11 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$this->assertEquals( 1, $wasSet, "Value not regenerated" );
 		$this->assertEquals( 0, $cache->getWarmupKeyMisses(), "Keys warmed in process cache" );
 
-		$priorTime = microtime( true );
-		usleep( 1 );
+		$priorTime = microtime( true ); // reference time
+		$cache->setTime( $priorTime );
+
+		$cache->addTime( 1 );
+
 		$wasSet = 0;
 		$keyedIds = new ArrayIterator( [ $keyB => 'efef' ] );
 		$v = $cache->getMultiWithUnionSetCallback(
@@ -623,7 +681,7 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$t2 = $cache->getCheckKeyTime( $cKey2 );
 		$this->assertGreaterThanOrEqual( $priorTime, $t2, 'Check keys generated on miss' );
 
-		$priorTime = microtime( true );
+		$priorTime = $cache->addTime( 0.01 );
 		$value = "@43636$";
 		$wasSet = 0;
 		$keyedIds = new ArrayIterator( [ $keyC => 43636 ] );
@@ -860,8 +918,11 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$cKey1 = wfRandomString();
 		$cKey2 = wfRandomString();
 
-		$priorTime = microtime( true );
-		usleep( 1 );
+		$priorTime = microtime( true ); // reference time
+		$cache->setTime( $priorTime );
+
+		$cache->addTime( 1 );
+
 		$curTTLs = [];
 		$this->assertEquals(
 			[ $key1 => $value1, $key2 => $value2 ],
@@ -876,7 +937,8 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$this->assertLessThanOrEqual( 0, $curTTLs[$key1], 'Key 1 has current TTL <= 0' );
 		$this->assertLessThanOrEqual( 0, $curTTLs[$key2], 'Key 2 has current TTL <= 0' );
 
-		usleep( 1 );
+		$cache->addTime( 1 );
+
 		$curTTLs = [];
 		$this->assertEquals(
 			[ $key1 => $value1, $key2 => $value2 ],
@@ -902,12 +964,15 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$value1 = wfRandomString();
 		$value2 = wfRandomString();
 
+		$cache->setTime( microtime( true ) );
+
 		// Fake initial check key to be set in the past. Otherwise we'd have to sleep for
 		// several seconds during the test to assert the behaviour.
 		foreach ( [ $checkAll, $check1, $check2 ] as $checkKey ) {
 			$cache->touchCheckKey( $checkKey, WANObjectCache::HOLDOFF_NONE );
 		}
-		usleep( 100 );
+
+		$cache->addTime( 0.100 );
 
 		$cache->set( 'key1', $value1, 10 );
 		$cache->set( 'key2', $value2, 10 );
@@ -929,6 +994,7 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$this->assertGreaterThanOrEqual( 9.5, $curTTLs['key2'], 'Initial ttls' );
 		$this->assertLessThanOrEqual( 10.5, $curTTLs['key2'], 'Initial ttls' );
 
+		$cache->addTime( 0.100 );
 		$cache->touchCheckKey( $check1 );
 
 		$curTTLs = [];
@@ -1049,53 +1115,69 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 		$cache = $this->cache;
 
 		$key = wfRandomString();
-		$value = wfRandomString();
+		$valueV1 = wfRandomString();
+		$valueV2 = [ wfRandomString() ];
 
 		$wasSet = 0;
-		$func = function ( $old, &$ttl ) use ( &$wasSet, $value ) {
+		$funcV1 = function () use ( &$wasSet, $valueV1 ) {
 			++$wasSet;
-			return $value;
+
+			return $valueV1;
+		};
+
+		$priorValue = false;
+		$priorAsOf = null;
+		$funcV2 = function ( $oldValue, &$ttl, $setOpts, $oldAsOf )
+		use ( &$wasSet, $valueV2, &$priorValue, &$priorAsOf ) {
+			$priorValue = $oldValue;
+			$priorAsOf = $oldAsOf;
+			++$wasSet;
+
+			return $valueV2; // new array format
 		};
 
 		// Set the main key (version N if versioned)
 		$wasSet = 0;
-		$v = $cache->getWithSetCallback( $key, 30, $func, $extOpts );
-		$this->assertEquals( $value, $v, "Value returned" );
+		$v = $cache->getWithSetCallback( $key, 30, $funcV1, $extOpts );
+		$this->assertEquals( $valueV1, $v, "Value returned" );
 		$this->assertEquals( 1, $wasSet, "Value regenerated" );
-		$cache->getWithSetCallback( $key, 30, $func, $extOpts );
+		$cache->getWithSetCallback( $key, 30, $funcV1, $extOpts );
 		$this->assertEquals( 1, $wasSet, "Value not regenerated" );
-		// Set the key for version N+1 (if versioned)
+		$this->assertEquals( $valueV1, $v, "Value not regenerated" );
+
 		if ( $versioned ) {
+			// Set the key for version N+1 format
 			$verOpts = [ 'version' => $extOpts['version'] + 1 ];
-
-			$wasSet = 0;
-			$v = $cache->getWithSetCallback( $key, 30, $func, $verOpts + $extOpts );
-			$this->assertEquals( $value, $v, "Value returned" );
-			$this->assertEquals( 1, $wasSet, "Value regenerated" );
-
-			$wasSet = 0;
-			$v = $cache->getWithSetCallback( $key, 30, $func, $verOpts + $extOpts );
-			$this->assertEquals( $value, $v, "Value returned" );
-			$this->assertEquals( 0, $wasSet, "Value not regenerated" );
+		} else {
+			// Start versioning now with the unversioned key still there
+			$verOpts = [ 'version' => 1 ];
 		}
 
+		// Value goes to secondary key since V1 already used $key
 		$wasSet = 0;
-		$cache->getWithSetCallback( $key, 30, $func, $extOpts );
-		$this->assertEquals( 0, $wasSet, "Value not regenerated" );
+		$v = $cache->getWithSetCallback( $key, 30, $funcV2, $verOpts + $extOpts );
+		$this->assertEquals( $valueV2, $v, "Value returned" );
+		$this->assertEquals( 1, $wasSet, "Value regenerated" );
+		$this->assertEquals( false, $priorValue, "Old value not given due to old format" );
+		$this->assertEquals( null, $priorAsOf, "Old value not given due to old format" );
 
 		$wasSet = 0;
-		$cache->delete( $key );
-		$v = $cache->getWithSetCallback( $key, 30, $func, $extOpts );
-		$this->assertEquals( $value, $v, "Value returned" );
+		$v = $cache->getWithSetCallback( $key, 30, $funcV2, $verOpts + $extOpts );
+		$this->assertEquals( $valueV2, $v, "Value not regenerated (secondary key)" );
+		$this->assertEquals( 0, $wasSet, "Value not regenerated (secondary key)" );
+
+		// Clear out the older or unversioned key
+		$cache->delete( $key, 0 );
+
+		// Set the key for next/first versioned format
+		$wasSet = 0;
+		$v = $cache->getWithSetCallback( $key, 30, $funcV2, $verOpts + $extOpts );
+		$this->assertEquals( $valueV2, $v, "Value returned" );
 		$this->assertEquals( 1, $wasSet, "Value regenerated" );
 
-		if ( $versioned ) {
-			$wasSet = 0;
-			$verOpts = [ 'version' => $extOpts['version'] + 1 ];
-			$v = $cache->getWithSetCallback( $key, 30, $func, $verOpts + $extOpts );
-			$this->assertEquals( $value, $v, "Value returned" );
-			$this->assertEquals( 1, $wasSet, "Value regenerated" );
-		}
+		$v = $cache->getWithSetCallback( $key, 30, $funcV2, $verOpts + $extOpts );
+		$this->assertEquals( $valueV2, $v, "Value not regenerated (main key)" );
+		$this->assertEquals( 1, $wasSet, "Value not regenerated (main key)" );
 	}
 
 	public static function getWithSetCallback_versions_provider() {
@@ -1113,36 +1195,39 @@ class WANObjectCacheTest extends PHPUnit_Framework_TestCase {
 	 * @covers WANObjectCache::parsePurgeValue
 	 */
 	public function testTouchKeys() {
+		$cache = $this->cache;
 		$key = wfRandomString();
 
-		$priorTime = microtime( true );
-		usleep( 100 );
-		$t0 = $this->cache->getCheckKeyTime( $key );
+		$priorTime = microtime( true ); // reference time
+		$cache->setTime( $priorTime );
+
+		$newTime = $cache->addTime( 0.100 );
+		$t0 = $cache->getCheckKeyTime( $key );
 		$this->assertGreaterThanOrEqual( $priorTime, $t0, 'Check key auto-created' );
 
-		$priorTime = microtime( true );
-		usleep( 100 );
-		$this->cache->touchCheckKey( $key );
-		$t1 = $this->cache->getCheckKeyTime( $key );
+		$priorTime = $newTime;
+		$newTime = $cache->addTime( 0.100 );
+		$cache->touchCheckKey( $key );
+		$t1 = $cache->getCheckKeyTime( $key );
 		$this->assertGreaterThanOrEqual( $priorTime, $t1, 'Check key created' );
 
-		$t2 = $this->cache->getCheckKeyTime( $key );
+		$t2 = $cache->getCheckKeyTime( $key );
 		$this->assertEquals( $t1, $t2, 'Check key time did not change' );
 
-		usleep( 100 );
-		$this->cache->touchCheckKey( $key );
-		$t3 = $this->cache->getCheckKeyTime( $key );
+		$cache->addTime( 0.100 );
+		$cache->touchCheckKey( $key );
+		$t3 = $cache->getCheckKeyTime( $key );
 		$this->assertGreaterThan( $t2, $t3, 'Check key time increased' );
 
-		$t4 = $this->cache->getCheckKeyTime( $key );
+		$t4 = $cache->getCheckKeyTime( $key );
 		$this->assertEquals( $t3, $t4, 'Check key time did not change' );
 
-		usleep( 100 );
-		$this->cache->resetCheckKey( $key );
-		$t5 = $this->cache->getCheckKeyTime( $key );
+		$cache->addTime( 0.100 );
+		$cache->resetCheckKey( $key );
+		$t5 = $cache->getCheckKeyTime( $key );
 		$this->assertGreaterThan( $t4, $t5, 'Check key time increased' );
 
-		$t6 = $this->cache->getCheckKeyTime( $key );
+		$t6 = $cache->getCheckKeyTime( $key );
 		$this->assertEquals( $t5, $t6, 'Check key time did not change' );
 	}
 
@@ -1469,6 +1554,15 @@ class TimeAdjustableWANObjectCache extends WANObjectCache {
 		}
 	}
 
+	public function addTime( $time ) {
+		$this->timeOverride += $time;
+		if ( $this->cache instanceof TimeAdjustableHashBagOStuff ) {
+			$this->cache->setTime( $this->timeOverride );
+		}
+
+		return $this->timeOverride;
+	}
+
 	protected function getCurrentTime() {
 		return $this->timeOverride ?: parent::getCurrentTime();
 	}
@@ -1478,7 +1572,7 @@ class NearExpiringWANObjectCache extends TimeAdjustableWANObjectCache {
 	const CLOCK_SKEW = 1;
 
 	protected function worthRefreshExpiring( $curTTL, $lowTTL ) {
-		return ( ( $curTTL + self::CLOCK_SKEW ) < $lowTTL );
+		return ( $curTTL > 0 && ( $curTTL + self::CLOCK_SKEW ) < $lowTTL );
 	}
 }
 
