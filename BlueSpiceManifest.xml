@@ -2,7 +2,7 @@
 
 <manifest
 	versionCode="2.27.2"
-	versionName="v2.27.2-docker.1"
+	versionName="v2.27.2-ucs.2"
 	repository="https://github.com/hallowelt/mediawiki"
 	branch="REL1_27_univention"
 	package="BlueSpice free univention"
