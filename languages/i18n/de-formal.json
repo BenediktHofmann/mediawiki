@@ -23,7 +23,8 @@
 			"Umherirrender",
 			"Urhixidur",
 			"Florian",
-			"Tiin"
+			"Tiin",
+			"Rhirsch"
 		]
 	},
 	"tog-hideminor": "Kleine Änderungen in den „Letzten Änderungen“ ausblenden",
@@ -75,6 +76,7 @@
 	"login-security": "Verifizieren Sie Ihre Identität",
 	"userlogin-noaccount": "Sie haben noch kein Benutzerkonto?",
 	"userlogin-loggedin": "Sie sind bereits als {{GENDER:$1|$1}} angemeldet.\nBenutzen Sie das unten stehende Formular, um sich unter einem anderen Benutzernamen anzumelden.",
+	"userlogin-reauth": "Sie müssen sich erneut anmelden, um zu verifizieren, dass Sie Nutzer \"{{GENDER:$1|$1}}\" sind.",
 	"createacct-email-ph": "Geben Sie Ihre E-Mail-Adresse ein",
 	"createacct-reason-ph": "Warum erstellen Sie ein anderes Benutzerkonto?",
 	"createacct-benefit-heading": "{{SITENAME}} wird von Menschen wie Ihnen geschaffen.",
@@ -357,5 +359,6 @@
 	"dberr-outofdate": "Beachten Sie, dass der Suchindex unserer Inhalte bei Google veraltet sein kann.",
 	"feedback-bugcheck": "Super! Bitte überprüfen Sie noch, ob es sich hierbei nicht um einen bereits [$1 bekannten Fehler] handelt.",
 	"feedback-bugornote": "Sofern Sie detailliert ein technisches Problem beschreiben möchten, melden Sie bitte [$1 einen Fehler].\nAnderenfalls können Sie auch das untenstehende einfache Formular nutzen. Ihr Kommentar wird, zusammen mit Ihrem Benutzernamen und der Version des von Ihnen verwendeten Webbrowsers sowie Betriebssystems, auf der Seite „[$3 $2]“ hinzugefügt.",
-	"feedback-thanks": "Vielen Dank. Ihre Rückmeldung wurde auf der Seite „[$2 $1]“ gespeichert."
+	"feedback-thanks": "Vielen Dank. Ihre Rückmeldung wurde auf der Seite „[$2 $1]“ gespeichert.",
+	"changecredentials": "Anmeldeinformationen ändern"
 }

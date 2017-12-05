@@ -69,6 +69,13 @@ class Command {
 	private $cgroup = false;
 
 	/**
+	 * bitfield with restrictions
+	 *
+	 * @var int
+	 */
+	protected $restrictions = 0;
+
+	/**
 	 * Constructor. Don't call directly, instead use Shell::command()
 	 *
 	 * @throws ShellDisabledError
@@ -99,6 +106,7 @@ class Command {
 
 	/**
 	 * Adds parameters to the command. All parameters are sanitized via Shell::escape().
+	 * Null values are ignored.
 	 *
 	 * @param string|string[] $args,...
 	 * @return $this
@@ -110,13 +118,14 @@ class Command {
 			// treat it as a list of arguments
 			$args = reset( $args );
 		}
-		$this->command .= ' ' . Shell::escape( $args );
+		$this->command = trim( $this->command . ' ' . Shell::escape( $args ) );
 
 		return $this;
 	}
 
 	/**
 	 * Adds unsafe parameters to the command. These parameters are NOT sanitized in any way.
+	 * Null values are ignored.
 	 *
 	 * @param string|string[] $args,...
 	 * @return $this
@@ -128,7 +137,12 @@ class Command {
 			// treat it as a list of arguments
 			$args = reset( $args );
 		}
-		$this->command .= implode( ' ', $args );
+		$args = array_filter( $args,
+			function ( $value ) {
+				return $value !== null;
+			}
+		);
+		$this->command = trim( $this->command . ' ' . implode( ' ', $args ) );
 
 		return $this;
 	}
@@ -209,6 +223,45 @@ class Command {
 	public function cgroup( $cgroup ) {
 		$this->cgroup = $cgroup;
 
+		return $this;
+	}
+
+	/**
+	 * Set additional restrictions for this request
+	 *
+	 * @since 1.31
+	 * @param int $restrictions
+	 * @return $this
+	 */
+	public function restrict( $restrictions ) {
+		$this->restrictions |= $restrictions;
+
+		return $this;
+	}
+
+	/**
+	 * Bitfield helper on whether a specific restriction is enabled
+	 *
+	 * @param int $restriction
+	 *
+	 * @return bool
+	 */
+	protected function hasRestriction( $restriction ) {
+		return ( $this->restrictions & $restriction ) === $restriction;
+	}
+
+	/**
+	 * If called, only the files/directories that are
+	 * whitelisted will be available to the shell command.
+	 *
+	 * limit.sh will always be whitelisted
+	 *
+	 * @param string[] $paths
+	 *
+	 * @return $this
+	 */
+	public function whitelistPaths( array $paths ) {
+		// Default implementation is a no-op
 		return $this;
 	}
 

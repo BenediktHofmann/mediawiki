@@ -39,10 +39,6 @@
  */
 
 /**
- * @defgroup Globalsettings Global settings
- */
-
-/**
  * @cond file_level_code
  * This is not a valid entry point, perform no further processing unless
  * MEDIAWIKI is defined
@@ -2554,6 +2550,8 @@ $wgGitInfoCacheDirectory = false;
  * It should be appended in the query string of static CSS and JS includes,
  * to ensure that client-side caches do not keep obsolete copies of global
  * styles.
+ *
+ * @deprecated since 1.31
  */
 $wgStyleVersion = '303';
 
@@ -3682,23 +3680,6 @@ $wgResourceLoaderMaxage = [
  * This will still be overridden when the debug URL parameter is used.
  */
 $wgResourceLoaderDebug = false;
-
-/**
- * Put each statement on its own line when minifying JavaScript. This makes
- * debugging in non-debug mode a bit easier.
- *
- * @deprecated since 1.27: Always false; no longer configurable.
- */
-$wgResourceLoaderMinifierStatementsOnOwnLine = false;
-
-/**
- * Maximum line length when minifying JavaScript. This is not a hard maximum:
- * the minifier will try not to produce lines longer than this, but may be
- * forced to do so in certain cases.
- *
- * @deprecated since 1.27: Always 1,000; no longer configurable.
- */
-$wgResourceLoaderMinifierMaxLineLength = 1000;
 
 /**
  * Whether to ensure the mediawiki.legacy library is loaded before other modules.
@@ -4850,6 +4831,7 @@ $wgReservedUsernames = [
 	'msg:double-redirect-fixer', // Automatic double redirect fix
 	'msg:usermessage-editor', // Default user for leaving user messages
 	'msg:proxyblocker', // For $wgProxyList and Special:Blockme (removed in 1.22)
+	'msg:sorbs', // For $wgEnableDnsBlacklist etc.
 	'msg:spambot_username', // Used by cleanupSpam.php
 	'msg:autochange-username', // Used by anon category RC entries (parser functions, Lua & purges)
 ];
@@ -4881,7 +4863,6 @@ $wgDefaultUserOptions = [
 	'hidepatrolled' => 0,
 	'hidecategorization' => 1,
 	'imagesize' => 2,
-	'math' => 1,
 	'minordefault' => 0,
 	'newpageshidepatrolled' => 0,
 	'nickname' => '',
@@ -6962,6 +6943,29 @@ $wgAllowCategorizedRecentChanges = false;
 $wgUseTagFilter = true;
 
 /**
+ * List of core tags to enable. Available tags are:
+ * - 'mw-contentmodelchange': Edit changes content model of a page
+ * - 'mw-new-redirect': Edit makes new redirect page (new page or by changing content page)
+ * - 'mw-removed-redirect': Edit changes an existing redirect into a non-redirect
+ * - 'mw-changed-redirect-target': Edit changes redirect target
+ * - 'mw-blank': Edit completely blanks the page
+ * - 'mw-replace': Edit removes more than 90% of the content
+ * - 'mw-rollback': Edit is a rollback, made through the rollback link or rollback API
+ *
+ * @var array
+ * @since 1.31
+ */
+$wgSoftwareTags = [
+	'mw-contentmodelchange' => true,
+	'mw-new-redirect' => true,
+	'mw-removed-redirect' => true,
+	'mw-changed-redirect-target' => true,
+	'mw-blank' => true,
+	'mw-replace' => true,
+	'mw-rollback' => true
+];
+
+/**
  * If set to an integer, pages that are watched by this many users or more
  * will not require the unwatchedpages permission to view the number of
  * watchers.
@@ -7428,6 +7432,7 @@ $wgJobClasses = [
 	'refreshLinksDynamic' => 'RefreshLinksJob',
 	'activityUpdateJob' => 'ActivityUpdateJob',
 	'categoryMembershipChange' => 'CategoryMembershipChangeJob',
+	'clearUserWatchlist' => 'ClearUserWatchlistJob',
 	'cdnPurge' => 'CdnPurgeJob',
 	'enqueue' => 'EnqueueJob', // local queue for multi-DC setups
 	'null' => 'NullJob'
@@ -8269,6 +8274,22 @@ $wgPhpCli = '/usr/bin/php';
  *  wikis.
  */
 $wgShellLocale = 'C.UTF-8';
+
+/**
+ * Method to use to restrict shell commands
+ *
+ * Supported options:
+ * - 'autodetect': Autodetect if any restriction methods are available
+ * - 'firejail': Use firejail <https://firejail.wordpress.com/>
+ * - false: Don't use any restrictions
+ *
+ * @note If using firejail with MediaWiki running in a home directory different
+ *  from the webserver user, firejail 0.9.44+ is required.
+ *
+ * @since 1.31
+ * @var string|bool
+ */
+$wgShellRestrictionMethod = false;
 
 /** @} */ # End shell }
 
