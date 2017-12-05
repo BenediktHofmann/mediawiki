@@ -461,9 +461,12 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	protected function ignoreErrors( $ignoreErrors = null ) {
 		$res = $this->getFlag( self::DBO_IGNORE );
 		if ( $ignoreErrors !== null ) {
-			$ignoreErrors
-				? $this->setFlag( self::DBO_IGNORE )
-				: $this->clearFlag( self::DBO_IGNORE );
+			// setFlag()/clearFlag() do not allow DBO_IGNORE changes for sanity
+			if ( $ignoreErrors ) {
+				$this->mFlags |= self::DBO_IGNORE;
+			} else {
+				$this->mFlags &= ~self::DBO_IGNORE;
+			}
 		}
 
 		return $res;
@@ -621,6 +624,10 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	public function setFlag( $flag, $remember = self::REMEMBER_NOTHING ) {
+		if ( ( $flag & self::DBO_IGNORE ) ) {
+			throw new \UnexpectedValueException( "Modifying DBO_IGNORE is not allowed." );
+		}
+
 		if ( $remember === self::REMEMBER_PRIOR ) {
 			array_push( $this->priorFlags, $this->mFlags );
 		}
@@ -628,6 +635,10 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	public function clearFlag( $flag, $remember = self::REMEMBER_NOTHING ) {
+		if ( ( $flag & self::DBO_IGNORE ) ) {
+			throw new \UnexpectedValueException( "Modifying DBO_IGNORE is not allowed." );
+		}
+
 		if ( $remember === self::REMEMBER_PRIOR ) {
 			array_push( $this->priorFlags, $this->mFlags );
 		}
@@ -2019,9 +2030,19 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 			if ( is_array( $table ) ) {
 				// A parenthesized group
-				$joinedTable = '('
-					. $this->tableNamesWithIndexClauseOrJOIN( $table, $use_index, $ignore_index, $join_conds )
-					. ')';
+				if ( count( $table ) > 1 ) {
+					$joinedTable = '('
+						. $this->tableNamesWithIndexClauseOrJOIN( $table, $use_index, $ignore_index, $join_conds )
+						. ')';
+				} else {
+					// Degenerate case
+					$innerTable = reset( $table );
+					$innerAlias = key( $table );
+					$joinedTable = $this->tableNameWithAlias(
+						$innerTable,
+						is_string( $innerAlias ) ? $innerAlias : $innerTable
+					);
+				}
 			} else {
 				$joinedTable = $this->tableNameWithAlias( $table, $alias );
 			}
@@ -3273,14 +3294,15 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @see WANObjectCache::getWithSetCallback()
 	 *
 	 * @param IDatabase $db1
-	 * @param IDatabase $dbs,...
+	 * @param IDatabase $db2 [optional]
 	 * @return array Map of values:
 	 *   - lag: highest lag of any of the DBs or false on error (e.g. replication stopped)
 	 *   - since: oldest UNIX timestamp of any of the DB lag estimates
 	 *   - pending: whether any of the DBs have uncommitted changes
+	 * @throws DBError
 	 * @since 1.27
 	 */
-	public static function getCacheSetOptions( IDatabase $db1 ) {
+	public static function getCacheSetOptions( IDatabase $db1, IDatabase $db2 = null ) {
 		$res = [ 'lag' => 0, 'since' => INF, 'pending' => false ];
 		foreach ( func_get_args() as $db ) {
 			/** @var IDatabase $db */

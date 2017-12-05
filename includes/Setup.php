@@ -734,14 +734,22 @@ if ( !$wgDBerrorLogTZ ) {
 	$wgDBerrorLogTZ = $wgLocaltimezone;
 }
 
-// initialize the request object in $wgRequest
+// Initialize the request object in $wgRequest
 $wgRequest = RequestContext::getMain()->getRequest(); // BackCompat
-// Set user IP/agent information for causal consistency purposes
+// Set user IP/agent information for causal consistency purposes.
+// The cpPosTime cookie has no prefix and is set by MediaWiki::preOutputCommit().
+$cpPosTime = $wgRequest->getFloat( 'cpPosTime', $wgRequest->getCookie( 'cpPosTime', '' ) );
 MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->setRequestInfo( [
 	'IPAddress' => $wgRequest->getIP(),
 	'UserAgent' => $wgRequest->getHeader( 'User-Agent' ),
-	'ChronologyProtection' => $wgRequest->getHeader( 'ChronologyProtection' )
+	'ChronologyProtection' => $wgRequest->getHeader( 'ChronologyProtection' ),
+	'ChronologyPositionTime' => $cpPosTime
 ] );
+// Make sure that caching does not compromise the consistency improvements
+if ( $cpPosTime ) {
+	MediaWikiServices::getInstance()->getMainWANObjectCache()->useInterimHoldOffCaching( false );
+}
+unset( $cpPosTime );
 
 // Useful debug output
 if ( $wgCommandLineMode ) {
