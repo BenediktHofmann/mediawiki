@@ -9,18 +9,22 @@
 		 */
 		init: function () {
 			var $topLinks,
-				rcTopSection,
+				topSection,
 				$watchlistDetails,
-				wlTopSection,
 				namespaces,
+				conditionalViews = {},
 				savedQueriesPreferenceName = mw.config.get( 'wgStructuredChangeFiltersSavedQueriesPreferenceName' ),
+				daysPreferenceName = mw.config.get( 'wgStructuredChangeFiltersDaysPreferenceName' ),
+				limitPreferenceName = mw.config.get( 'wgStructuredChangeFiltersLimitPreferenceName' ),
 				filtersModel = new mw.rcfilters.dm.FiltersViewModel(),
 				changesListModel = new mw.rcfilters.dm.ChangesListViewModel(),
 				savedQueriesModel = new mw.rcfilters.dm.SavedQueriesModel( filtersModel ),
 				controller = new mw.rcfilters.Controller(
 					filtersModel, changesListModel, savedQueriesModel,
 					{
-						savedQueriesPreferenceName: savedQueriesPreferenceName
+						savedQueriesPreferenceName: savedQueriesPreferenceName,
+						daysPreferenceName: daysPreferenceName,
+						limitPreferenceName: limitPreferenceName
 					}
 				),
 				$overlay = $( '<div>' )
@@ -31,7 +35,46 @@
 					controller, savedQueriesModel, { $overlay: $overlay }
 				),
 				specialPage = mw.config.get( 'wgCanonicalSpecialPageName' ),
-				$changesListRoot = $( '.mw-changeslist, .mw-changeslist-empty, .mw-changeslist-timeout' );
+				$changesListRoot = $( [
+					'.mw-changeslist',
+					'.mw-changeslist-empty',
+					'.mw-changeslist-timeout',
+					'.mw-changeslist-notargetpage'
+				].join( ', ' ) );
+
+			if ( specialPage === 'Recentchangeslinked' ) {
+				conditionalViews.recentChangesLinked = {
+					groups: [
+						{
+							name: 'page',
+							type: 'any_value',
+							title: '',
+							hidden: true,
+							isSticky: false,
+							filters: [
+								{
+									name: 'target',
+									'default': ''
+								}
+							]
+						},
+						{
+							name: 'toOrFrom',
+							type: 'boolean',
+							title: '',
+							hidden: true,
+							isSticky: false,
+							filters: [
+								{
+									name: 'showlinkedto',
+									'default': false
+								}
+							]
+						}
+					]
+				};
+
+			}
 
 			// TODO: The changesListWrapperWidget should be able to initialize
 			// after the model is ready.
@@ -52,7 +95,8 @@
 			controller.initialize(
 				mw.config.get( 'wgStructuredChangeFilters' ),
 				namespaces,
-				mw.config.get( 'wgRCFiltersChangeTags' )
+				mw.config.get( 'wgRCFiltersChangeTags' ),
+				conditionalViews
 			);
 
 			// eslint-disable-next-line no-new
@@ -71,25 +115,33 @@
 
 			controller.replaceUrl();
 
-			if ( specialPage === 'Recentchanges' ||
-				specialPage === 'Recentchangeslinked' ) {
+			if ( specialPage === 'Recentchanges' ) {
 				$topLinks = $( '.mw-recentchanges-toplinks' ).detach();
 
-				rcTopSection = new mw.rcfilters.ui.RcTopSectionWidget(
+				topSection = new mw.rcfilters.ui.RcTopSectionWidget(
 					savedLinksListWidget, $topLinks
 				);
-				filtersWidget.setTopSection( rcTopSection.$element );
-			} // end Special:RC
+				filtersWidget.setTopSection( topSection.$element );
+			} // end Recentchanges
+
+			if ( specialPage === 'Recentchangeslinked' ) {
+				topSection = new mw.rcfilters.ui.RclTopSectionWidget(
+					savedLinksListWidget, controller,
+					filtersModel.getGroup( 'toOrFrom' ).getItemByParamName( 'showlinkedto' ),
+					filtersModel.getGroup( 'page' ).getItemByParamName( 'target' )
+				);
+				filtersWidget.setTopSection( topSection.$element );
+			} // end Recentchangeslinked
 
 			if ( specialPage === 'Watchlist' ) {
 				$( '#contentSub, form#mw-watchlist-resetbutton' ).detach();
 				$watchlistDetails = $( '.watchlistDetails' ).detach().contents();
 
-				wlTopSection = new mw.rcfilters.ui.WatchlistTopSectionWidget(
+				topSection = new mw.rcfilters.ui.WatchlistTopSectionWidget(
 					controller, changesListModel, savedLinksListWidget, $watchlistDetails
 				);
-				filtersWidget.setTopSection( wlTopSection.$element );
-			} // end Special:WL
+				filtersWidget.setTopSection( topSection.$element );
+			} // end Watchlist
 
 			/**
 			 * Fired when initialization of the filtering interface for changes list is complete.
