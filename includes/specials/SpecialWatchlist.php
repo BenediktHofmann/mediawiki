@@ -33,6 +33,8 @@ use Wikimedia\Rdbms\IDatabase;
  */
 class SpecialWatchlist extends ChangesListSpecialPage {
 	protected static $savedQueriesPreferenceName = 'rcfilters-wl-saved-queries';
+	protected static $daysPreferenceName = 'watchlistdays';
+	protected static $limitPreferenceName = 'wllimit';
 
 	private $maxDays;
 
@@ -108,10 +110,10 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		}
 	}
 
-	public function isStructuredFilterUiEnabled() {
-		return $this->getRequest()->getBool( 'rcfilters' ) || (
-			$this->getConfig()->get( 'StructuredChangeFiltersOnWatchlist' ) &&
-			$this->getUser()->getOption( 'rcenhancedfilters' )
+	public static function checkStructuredFilterUiEnabled( Config $config, User $user ) {
+		return (
+			$config->get( 'StructuredChangeFiltersOnWatchlist' ) &&
+			$user->getOption( 'rcenhancedfilters' )
 		);
 	}
 
@@ -855,11 +857,12 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		return Html::rawElement(
 			'span',
 			$attribs,
-			Xml::checkLabel(
-				$this->msg( $message, '' )->text(),
-				$name,
-				$name,
-				(int)$value
+			// not using Html::checkLabel because that would escape the contents
+			Html::check( $name, (int)$value, [ 'id' => $name ] ) . Html::rawElement(
+				'label',
+				$attribs + [ 'for' => $name ],
+				// <nowiki/> at beginning to avoid messages with "$1 ..." being parsed as pre tags
+				$this->msg( $message, '<nowiki/>' )->parse()
 			)
 		);
 	}
@@ -875,13 +878,5 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$store = MediaWikiServices::getInstance()->getWatchedItemStore();
 		$count = $store->countWatchedItems( $this->getUser() );
 		return floor( $count / 2 );
-	}
-
-	function getDefaultLimit() {
-		return $this->getUser()->getIntOption( 'wllimit' );
-	}
-
-	function getDefaultDays() {
-		return floatval( $this->getUser()->getOption( 'watchlistdays' ) );
 	}
 }

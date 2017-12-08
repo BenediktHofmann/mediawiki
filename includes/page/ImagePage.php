@@ -251,13 +251,14 @@ class ImagePage extends Article {
 	protected function makeMetadataTable( $metadata ) {
 		$r = "<div class=\"mw-imagepage-section-metadata\">";
 		$r .= $this->getContext()->msg( 'metadata-help' )->plain();
-		$r .= "<table id=\"mw_metadata\" class=\"mw_metadata\">\n";
+		// Intial state is collapsed
+		// see filepage.css and mediawiki.action.view.metadata module.
+		$r .= "<table id=\"mw_metadata\" class=\"mw_metadata collapsed\">\n";
 		foreach ( $metadata as $type => $stuff ) {
 			foreach ( $stuff as $v ) {
 				$class = str_replace( ' ', '_', $v['id'] );
 				if ( $type == 'collapsed' ) {
-					// Handled by mediawiki.action.view.metadata module.
-					$class .= ' collapsable';
+					$class .= ' mw-metadata-collapsible';
 				}
 				$r .= Html::rawElement( 'tr',
 					[ 'class' => $class ],
