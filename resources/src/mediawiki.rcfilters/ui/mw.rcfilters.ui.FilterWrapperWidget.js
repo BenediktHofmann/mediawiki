@@ -55,7 +55,8 @@
 			icon: 'reload',
 			framed: false,
 			label: mw.msg( 'rcfilters-show-new-changes' ),
-			flags: [ 'progressive' ]
+			flags: [ 'progressive' ],
+			classes: [ 'mw-rcfilters-ui-filterWrapperWidget-showNewChanges' ]
 		} );
 
 		// Initialize
@@ -74,6 +75,7 @@
 		}
 
 		// Events
+		this.filterTagWidget.menu.connect( this, { toggle: [ 'emit', 'menuToggle' ] } );
 		this.changesListModel.connect( this, { newChangesExist: 'onNewChangesExist' } );
 		this.showNewChangesLink.connect( this, { click: 'onShowNewChangesClick' } );
 		this.showNewChangesLink.toggle( false );

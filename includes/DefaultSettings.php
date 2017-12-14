@@ -4851,6 +4851,7 @@ $wgDefaultUserOptions = [
 	'editfont' => 'monospace',
 	'editondblclick' => 0,
 	'editsectiononrightclick' => 0,
+	'email-allow-new-users' => 1,
 	'enotifminoredits' => 0,
 	'enotifrevealaddr' => 0,
 	'enotifusertalkpages' => 1,
@@ -5147,6 +5148,7 @@ $wgGroupPermissions['user']['sendemail'] = true;
 $wgGroupPermissions['user']['applychangetags'] = true;
 $wgGroupPermissions['user']['changetags'] = true;
 $wgGroupPermissions['user']['editcontentmodel'] = true;
+$wgGroupPermissions['user']['sendemail-new-users'] = true;
 
 // Implicit group for accounts that pass $wgAutoConfirmAge
 $wgGroupPermissions['autoconfirmed']['autoconfirmed'] = true;

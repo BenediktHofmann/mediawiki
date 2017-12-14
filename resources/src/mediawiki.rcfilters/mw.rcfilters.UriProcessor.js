@@ -100,7 +100,8 @@
 	 */
 	mw.rcfilters.UriProcessor.prototype._normalizeTargetInUri = function ( uri ) {
 		var parts,
-			re = /^((?:\/.+\/)?.+:.+)\/(.+)$/; // matches [namespace:]Title/Subpage
+			// matches [/wiki/]SpecialNS:RCL/[Namespace:]Title/Subpage/Subsubpage/etc
+			re = /^((?:\/.+?\/)?.*?:.*?)\/(.*)$/;
 
 		// target in title param
 		if ( uri.query.title ) {
@@ -112,7 +113,7 @@
 		}
 
 		// target in path
-		parts = uri.path.match( re );
+		parts = mw.Uri.decode( uri.path ).match( re );
 		if ( parts ) {
 			uri.path = parts[ 1 ];
 			uri.query.target = parts[ 2 ];
