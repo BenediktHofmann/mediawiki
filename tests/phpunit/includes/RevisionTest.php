@@ -20,6 +20,35 @@ class RevisionTest extends MediaWikiTestCase {
 				'content' => new JavaScriptContent( 'hellow world.' )
 			],
 		];
+		// FIXME: test with and without user ID, and with a user object.
+		// We can't prepare that here though, since we don't yet have a dummy DB
+	}
+
+	/**
+	 * @param string $model
+	 * @return Title
+	 */
+	public function getMockTitle( $model = CONTENT_MODEL_WIKITEXT ) {
+		$mock = $this->getMockBuilder( Title::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$mock->expects( $this->any() )
+			->method( 'getNamespace' )
+			->will( $this->returnValue( $this->getDefaultWikitextNS() ) );
+		$mock->expects( $this->any() )
+			->method( 'getPrefixedText' )
+			->will( $this->returnValue( 'RevisionTest' ) );
+		$mock->expects( $this->any() )
+			->method( 'getDBKey' )
+			->will( $this->returnValue( 'RevisionTest' ) );
+		$mock->expects( $this->any() )
+			->method( 'getArticleID' )
+			->will( $this->returnValue( 23 ) );
+		$mock->expects( $this->any() )
+			->method( 'getModel' )
+			->will( $this->returnValue( $model ) );
+
+		return $mock;
 	}
 
 	/**
@@ -32,6 +61,15 @@ class RevisionTest extends MediaWikiTestCase {
 		$this->assertNotNull( $rev->getContent(), 'no content object available' );
 		$this->assertEquals( CONTENT_MODEL_JAVASCRIPT, $rev->getContent()->getModel() );
 		$this->assertEquals( CONTENT_MODEL_JAVASCRIPT, $rev->getContentModel() );
+	}
+
+	/**
+	 * @covers Revision::__construct
+	 * @covers Revision::constructFromRowArray
+	 */
+	public function testConstructFromEmptyArray() {
+		$rev = new Revision( [], 0, $this->getMockTitle() );
+		$this->assertNull( $rev->getContent(), 'no content object should be available' );
 	}
 
 	public function provideConstructFromArray_userSetAsExpected() {
@@ -137,6 +175,15 @@ class RevisionTest extends MediaWikiTestCase {
 		new Revision( $rowArray );
 	}
 
+	/**
+	 * @covers Revision::__construct
+	 * @covers Revision::constructFromRowArray
+	 */
+	public function testConstructFromNothing() {
+		$rev = new Revision( [] );
+		$this->assertNull( $rev->getId(), 'getId()' );
+	}
+
 	public function provideConstructFromRow() {
 		yield 'Full construction' => [
 			[
@@ -201,7 +248,7 @@ class RevisionTest extends MediaWikiTestCase {
 	/**
 	 * @dataProvider provideConstructFromRow
 	 * @covers Revision::__construct
-	 * @covers Revision::constructFromDbRowObject
+	 * @covers Revision::constructFromRowArray
 	 */
 	public function testConstructFromRow( array $arrayData, $assertions ) {
 		$row = (object)$arrayData;
