@@ -316,10 +316,20 @@ $wgAppleTouchIcon = false;
 
 /**
  * Value for the referrer policy meta tag.
- * One of 'never', 'default', 'origin', 'always'. Setting it to false just
- * prevents the meta tag from being output.
- * See https://www.w3.org/TR/referrer-policy/ for details.
+ * One or more of the values defined in the Referrer Policy specification:
+ * https://w3c.github.io/webappsec-referrer-policy/
+ * ('no-referrer', 'no-referrer-when-downgrade', 'same-origin',
+ * 'origin', 'strict-origin', 'origin-when-cross-origin',
+ * 'strict-origin-when-cross-origin', or 'unsafe-url')
+ * Setting it to false prevents the meta tag from being output
+ * (which results in falling back to the Referrer-Policy header,
+ * or 'no-referrer-when-downgrade' if that's not set either.)
+ * Setting it to an array (supported since 1.31) will create a meta tag for
+ * each value, in the reverse of the order (meaning that the first array element
+ * will be the default and the others used as fallbacks for browsers which do not
+ * understand it).
  *
+ * @var array|string|bool
  * @since 1.25
  */
 $wgReferrerPolicy = false;
@@ -3763,7 +3773,7 @@ $wgResourceLoaderValidateStaticJS = false;
  * @code
  *   $wgResourceLoaderLESSVars = [
  *     'exampleFontSize'  => '1em',
- *     'exampleBlue' => '#eee',
+ *     'exampleBlue' => '#36c',
  *   ];
  * @endcode
  * @since 1.22
@@ -6953,6 +6963,7 @@ $wgUseTagFilter = true;
  * - 'mw-blank': Edit completely blanks the page
  * - 'mw-replace': Edit removes more than 90% of the content
  * - 'mw-rollback': Edit is a rollback, made through the rollback link or rollback API
+ * - 'mw-undo': Edit made through an undo link
  *
  * @var array
  * @since 1.31
@@ -6964,7 +6975,8 @@ $wgSoftwareTags = [
 	'mw-changed-redirect-target' => true,
 	'mw-blank' => true,
 	'mw-replace' => true,
-	'mw-rollback' => true
+	'mw-rollback' => true,
+	'mw-undo' => true,
 ];
 
 /**

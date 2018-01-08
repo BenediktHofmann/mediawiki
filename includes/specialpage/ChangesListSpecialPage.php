@@ -553,7 +553,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	public function execute( $subpage ) {
 		$this->rcSubpage = $subpage;
 
-		$this->considerActionsForDefaultSavedQuery();
+		$this->considerActionsForDefaultSavedQuery( $subpage );
 
 		$opts = $this->getOptions();
 		try {
@@ -629,9 +629,11 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 * Check whether or not the page should load defaults, and if so, whether
 	 * a default saved query is relevant to be redirected to. If it is relevant,
 	 * redirect properly with all necessary query parameters.
+	 *
+	 * @param string $subpage
 	 */
-	protected function considerActionsForDefaultSavedQuery() {
-		if ( !$this->isStructuredFilterUiEnabled() ) {
+	protected function considerActionsForDefaultSavedQuery( $subpage ) {
+		if ( !$this->isStructuredFilterUiEnabled() || $this->including() ) {
 			return;
 		}
 
@@ -677,7 +679,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 					// but are still valid and requested in the URL
 					$query = array_merge( $this->getRequest()->getValues(), $query );
 					unset( $query[ 'title' ] );
-					$this->getOutput()->redirect( $this->getPageTitle()->getCanonicalURL( $query ) );
+					$this->getOutput()->redirect( $this->getPageTitle( $subpage )->getCanonicalURL( $query ) );
 				} else {
 					// There's a default, but the version is not 2, and the server can't
 					// actually recognize the query itself. This happens if it is before
@@ -704,7 +706,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 */
 	protected function includeRcFiltersApp() {
 		$out = $this->getOutput();
-		if ( $this->isStructuredFilterUiEnabled() ) {
+		if ( $this->isStructuredFilterUiEnabled() && !$this->including() ) {
 			$jsData = $this->getStructuredFilterJsData();
 
 			$messages = [];
@@ -1649,7 +1651,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		] );
 		$out->addModules( 'mediawiki.special.changeslist.legend.js' );
 
-		if ( $this->isStructuredFilterUiEnabled() ) {
+		if ( $this->isStructuredFilterUiEnabled() && !$this->including() ) {
 			$out->addModules( 'mediawiki.rcfilters.filters.ui' );
 			$out->addModuleStyles( 'mediawiki.rcfilters.filters.base.styles' );
 		}

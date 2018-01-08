@@ -3243,6 +3243,8 @@ class OutputPage extends ContextSource {
 			&& ( $relevantTitle->exists() || $relevantTitle->quickUserCan( 'create', $user ) );
 
 		foreach ( $title->getRestrictionTypes() as $type ) {
+			// Following keys are set in $vars:
+			// wgRestrictionCreate, wgRestrictionEdit, wgRestrictionMove, wgRestrictionUpload
 			$vars['wgRestriction' . ucfirst( $type )] = $title->getRestrictions( $type );
 		}
 
@@ -3331,10 +3333,14 @@ class OutputPage extends ContextSource {
 		] );
 
 		if ( $config->get( 'ReferrerPolicy' ) !== false ) {
-			$tags['meta-referrer'] = Html::element( 'meta', [
-				'name' => 'referrer',
-				'content' => $config->get( 'ReferrerPolicy' )
-			] );
+			// Per https://w3c.github.io/webappsec-referrer-policy/#unknown-policy-values
+			// fallbacks should come before the primary value so we need to reverse the array.
+			foreach ( array_reverse( (array)$config->get( 'ReferrerPolicy' ) ) as $i => $policy ) {
+				$tags["meta-referrer-$i"] = Html::element( 'meta', [
+					'name' => 'referrer',
+					'content' => $policy,
+				] );
+			}
 		}
 
 		$p = "{$this->mIndexPolicy},{$this->mFollowPolicy}";
