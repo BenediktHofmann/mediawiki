@@ -22,12 +22,12 @@ class ContentHandlerTest extends MediaWikiTestCase {
 				12312 => 'testing',
 			],
 			'wgContentHandlers' => [
-				CONTENT_MODEL_WIKITEXT => 'WikitextContentHandler',
-				CONTENT_MODEL_JAVASCRIPT => 'JavaScriptContentHandler',
-				CONTENT_MODEL_JSON => 'JsonContentHandler',
-				CONTENT_MODEL_CSS => 'CssContentHandler',
-				CONTENT_MODEL_TEXT => 'TextContentHandler',
-				'testing' => 'DummyContentHandlerForTesting',
+				CONTENT_MODEL_WIKITEXT => WikitextContentHandler::class,
+				CONTENT_MODEL_JAVASCRIPT => JavaScriptContentHandler::class,
+				CONTENT_MODEL_JSON => JsonContentHandler::class,
+				CONTENT_MODEL_CSS => CssContentHandler::class,
+				CONTENT_MODEL_TEXT => TextContentHandler::class,
+				'testing' => DummyContentHandlerForTesting::class,
 				'testing-callbacks' => function ( $modelId ) {
 					return new DummyContentHandlerForTesting( $modelId );
 				}
@@ -248,10 +248,6 @@ class ContentHandlerTest extends MediaWikiTestCase {
 		$this->assertNull( $text );
 	}
 
-	/*
-	public static function makeContent( $text, Title $title, $modelId = null, $format = null ) {}
-	*/
-
 	public static function dataMakeContent() {
 		return [
 			[ 'hallo', 'Help:Test', null, null, CONTENT_MODEL_WIKITEXT, 'hallo', false ],
@@ -370,12 +366,6 @@ class ContentHandlerTest extends MediaWikiTestCase {
 		$this->assertSame( $tag, 'mw-contentmodelchange' );
 	}
 
-	/*
-	public function testSupportsSections() {
-		$this->markTestIncomplete( "not yet implemented" );
-	}
-	*/
-
 	/**
 	 * @covers ContentHandler::supportsCategories
 	 */
@@ -404,13 +394,13 @@ class ContentHandlerTest extends MediaWikiTestCase {
 
 	public function provideGetModelForID() {
 		return [
-			[ CONTENT_MODEL_WIKITEXT, 'WikitextContentHandler' ],
-			[ CONTENT_MODEL_JAVASCRIPT, 'JavaScriptContentHandler' ],
-			[ CONTENT_MODEL_JSON, 'JsonContentHandler' ],
-			[ CONTENT_MODEL_CSS, 'CssContentHandler' ],
-			[ CONTENT_MODEL_TEXT, 'TextContentHandler' ],
-			[ 'testing', 'DummyContentHandlerForTesting' ],
-			[ 'testing-callbacks', 'DummyContentHandlerForTesting' ],
+			[ CONTENT_MODEL_WIKITEXT, WikitextContentHandler::class ],
+			[ CONTENT_MODEL_JAVASCRIPT, JavaScriptContentHandler::class ],
+			[ CONTENT_MODEL_JSON, JsonContentHandler::class ],
+			[ CONTENT_MODEL_CSS, CssContentHandler::class ],
+			[ CONTENT_MODEL_TEXT, TextContentHandler::class ],
+			[ 'testing', DummyContentHandlerForTesting::class ],
+			[ 'testing-callbacks', DummyContentHandlerForTesting::class ],
 		];
 	}
 
@@ -442,7 +432,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 	}
 
 	private function newSearchEngine() {
-		$searchEngine = $this->getMockBuilder( 'SearchEngine' )
+		$searchEngine = $this->getMockBuilder( SearchEngine::class )
 			->getMock();
 
 		$searchEngine->expects( $this->any() )
@@ -458,7 +448,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 	 * @covers ContentHandler::getDataForSearchIndex
 	 */
 	public function testDataIndexFields() {
-		$mockEngine = $this->createMock( 'SearchEngine' );
+		$mockEngine = $this->createMock( SearchEngine::class );
 		$title = Title::newFromText( 'Not_Main_Page', NS_MAIN );
 		$page = new WikiPage( $title );
 

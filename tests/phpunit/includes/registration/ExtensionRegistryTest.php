@@ -28,7 +28,7 @@ class ExtensionRegistryTest extends MediaWikiTestCase {
 			'autoloaderPaths' => []
 		];
 		$registry = new ExtensionRegistry();
-		$class = new ReflectionClass( 'ExtensionRegistry' );
+		$class = new ReflectionClass( ExtensionRegistry::class );
 		$method = $class->getMethod( 'exportExtractedData' );
 		$method->setAccessible( true );
 		$method->invokeArgs( $registry, [ $info ] );
@@ -285,6 +285,18 @@ class ExtensionRegistryTest extends MediaWikiTestCase {
 							],
 						],
 					],
+				],
+			],
+			[
+				'global is null before',
+				[
+					'NullGlobal' => null,
+				],
+				[
+					'NullGlobal' => 'not-null'
+				],
+				[
+					'NullGlobal' => null
 				],
 			],
 		];

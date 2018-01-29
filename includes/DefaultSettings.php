@@ -1940,6 +1940,7 @@ $wgSharedSchema = false;
  *   - user:        DB user
  *   - password:    DB password
  *   - type:        DB type
+ *   - driver:      DB driver (when there are multiple drivers)
  *
  *   - load:        Ratio of DB_REPLICA load, must be >=0, the sum of all loads must be >0.
  *                  If this is zero for any given server, no normal query traffic will be
@@ -3410,7 +3411,7 @@ $wgExperimentalHtmlIds = false;
  *
  * @since 1.30
  */
-$wgFragmentMode = [ 'legacy' ];
+$wgFragmentMode = [ 'legacy', 'html5' ];
 
 /**
  * Which ID escaping mode should be used for external interwiki links? See documentation
@@ -3935,9 +3936,6 @@ $wgNamespaceAliases = [];
  * because articles can be created such that they are hard to view or edit.
  *
  * In some rare cases you may wish to remove + for compatibility with old links.
- *
- * Theoretically 0x80-0x9F of ISO 8859-1 should be disallowed, but
- * this breaks interlanguage links
  */
 $wgLegalTitleChars = " %!\"$&'()*,\\-.\\/0-9:;=?@A-Z\\\\^_`a-z~\\x80-\\xFF+";
 
@@ -5158,7 +5156,6 @@ $wgGroupPermissions['user']['sendemail'] = true;
 $wgGroupPermissions['user']['applychangetags'] = true;
 $wgGroupPermissions['user']['changetags'] = true;
 $wgGroupPermissions['user']['editcontentmodel'] = true;
-$wgGroupPermissions['user']['sendemail-new-users'] = true;
 
 // Implicit group for accounts that pass $wgAutoConfirmAge
 $wgGroupPermissions['autoconfirmed']['autoconfirmed'] = true;
@@ -6622,6 +6619,13 @@ $wgCommandLineDarkBg = false;
  * option in MySQL.
  */
 $wgReadOnly = null;
+
+/**
+ * Set this to true to put the wiki watchlists into read-only mode.
+ * @var bool
+ * @since 1.31
+ */
+$wgReadOnlyWatchedItemStore = false;
 
 /**
  * If this lock file exists (size > 0), the wiki will be forced into read-only mode.

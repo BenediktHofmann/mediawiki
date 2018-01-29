@@ -1870,7 +1870,7 @@
 	"suppress": "Forigu",
 	"querypage-disabled": "Tiu ĉi speciala paĝo estas malfunkciigita pro rendimentaj kialoj.",
 	"apihelp": "Helpo pri API",
-	"apihelp-no-such-module": "Modulo \"$1\" ne estis trovita.",
+	"apihelp-no-such-module": "La modjulo „$1” ne estis trovita.",
 	"apisandbox": "API testejo",
 	"apisandbox-jsonly": "JavaScript estas postulita por uzi la API provejon.",
 	"apisandbox-api-disabled": "API estas malŝalta en ĉi tiu retejo.",
@@ -3894,6 +3894,8 @@
 	"restrictionsfield-badip": "Malvalida IP-adreso de la intervalo: $1",
 	"restrictionsfield-label": "Permesita IP-intervalo:",
 	"restrictionsfield-help": "Unu IP-adreso aŭ CIDR-intervalo per linio. Por permesigi ĉion, uzu:<pre>0.0.0.0/0</code>\n<code>::/0</pre>",
+	"edit-error-short": "Eraro: $1",
+	"edit-error-long": "Eraroj\n\n$1",
 	"revid": "revizio $1",
 	"pageid": "Identigilo de paĝo $1"
 }

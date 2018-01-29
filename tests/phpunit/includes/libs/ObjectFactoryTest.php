@@ -20,12 +20,14 @@
 
 class ObjectFactoryTest extends PHPUnit_Framework_TestCase {
 
+	use MediaWikiCoversValidator;
+
 	/**
 	 * @covers ObjectFactory::getObjectFromSpec
 	 */
 	public function testClosureExpansionDisabled() {
 		$obj = ObjectFactory::getObjectFromSpec( [
-			'class' => 'ObjectFactoryTestFixture',
+			'class' => ObjectFactoryTestFixture::class,
 			'args' => [
 				function () {
 					return 'wrapped';
@@ -52,7 +54,7 @@ class ObjectFactoryTest extends PHPUnit_Framework_TestCase {
 	 */
 	public function testClosureExpansionEnabled() {
 		$obj = ObjectFactory::getObjectFromSpec( [
-			'class' => 'ObjectFactoryTestFixture',
+			'class' => ObjectFactoryTestFixture::class,
 			'args' => [
 				function () {
 					return 'wrapped';
@@ -73,7 +75,7 @@ class ObjectFactoryTest extends PHPUnit_Framework_TestCase {
 		$this->assertSame( 'wrapped', $obj->setterArgs[0] );
 
 		$obj = ObjectFactory::getObjectFromSpec( [
-			'class' => 'ObjectFactoryTestFixture',
+			'class' => ObjectFactoryTestFixture::class,
 			'args' => [ function () {
 				return 'unwrapped';
 			}, ],
@@ -121,7 +123,7 @@ class ObjectFactoryTest extends PHPUnit_Framework_TestCase {
 	 */
 	public function testGetObjectFromClass( $args ) {
 		$obj = ObjectFactory::getObjectFromSpec( [
-			'class' => 'ObjectFactoryTestFixture',
+			'class' => ObjectFactoryTestFixture::class,
 			'args' => $args,
 		] );
 		$this->assertSame( $args, $obj->args );

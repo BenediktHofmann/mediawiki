@@ -1474,16 +1474,6 @@ return [
 	'mediawiki.action.history.styles' => [
 		'styles' => 'resources/src/mediawiki.action/mediawiki.action.history.styles.css',
 	],
-	// using this module is deprecated, for diff styles use mediawiki.diff.styles instead
-	'mediawiki.action.history.diff' => [
-		'styles' => [
-			'resources/src/mediawiki/mediawiki.diff.styles.css',
-			'resources/src/mediawiki/mediawiki.diff.styles.print.css' => [
-				'media' => 'print'
-			],
-		],
-		'targets' => [ 'desktop', 'mobile' ],
-	],
 	'mediawiki.action.view.dblClickEdit' => [
 		'scripts' => 'resources/src/mediawiki.action/mediawiki.action.view.dblClickEdit.js',
 		'dependencies' => [
@@ -2116,6 +2106,7 @@ return [
 		'styles' => 'resources/src/mediawiki.special/mediawiki.special.pagesWithProp.css',
 	],
 	'mediawiki.special.preferences' => [
+		'targets' => [ 'desktop', 'mobile' ],
 		'scripts' => [
 			'resources/src/mediawiki.special/mediawiki.special.preferences.confirmClose.js',
 			'resources/src/mediawiki.special/mediawiki.special.preferences.convertmessagebox.js',
@@ -2136,6 +2127,7 @@ return [
 		],
 	],
 	'mediawiki.special.preferences.styles' => [
+		'targets' => [ 'desktop', 'mobile' ],
 		'styles' => 'resources/src/mediawiki.special/mediawiki.special.preferences.styles.css',
 	],
 	'mediawiki.special.recentchanges' => [
@@ -2218,6 +2210,7 @@ return [
 			'jquery.spinner',
 			'mediawiki.jqueryMsg',
 			'mediawiki.api',
+			'mediawiki.api.parse',
 			'mediawiki.libs.jpegmeta',
 			'mediawiki.Title',
 			'mediawiki.util',

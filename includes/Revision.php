@@ -22,6 +22,8 @@
 
 use MediaWiki\Storage\MutableRevisionRecord;
 use MediaWiki\Storage\RevisionAccessException;
+use MediaWiki\Storage\RevisionFactory;
+use MediaWiki\Storage\RevisionLookup;
 use MediaWiki\Storage\RevisionRecord;
 use MediaWiki\Storage\RevisionStore;
 use MediaWiki\Storage\RevisionStoreRecord;
@@ -65,7 +67,21 @@ class Revision implements IDBAccessObject {
 	}
 
 	/**
-	 * @param bool|string $wikiId The ID of the target wiki database. Use false for the local wiki.
+	 * @return RevisionLookup
+	 */
+	protected static function getRevisionLookup() {
+		return MediaWikiServices::getInstance()->getRevisionLookup();
+	}
+
+	/**
+	 * @return RevisionFactory
+	 */
+	protected static function getRevisionFactory() {
+		return MediaWikiServices::getInstance()->getRevisionFactory();
+	}
+
+	/**
+	 * @param bool|string $wiki The ID of the target wiki database. Use false for the local wiki.
 	 *
 	 * @return SqlBlobStore
 	 */
@@ -97,7 +113,7 @@ class Revision implements IDBAccessObject {
 	 * @return Revision|null
 	 */
 	public static function newFromId( $id, $flags = 0 ) {
-		$rec = self::getRevisionStore()->getRevisionById( $id, $flags );
+		$rec = self::getRevisionLookup()->getRevisionById( $id, $flags );
 		return $rec === null ? null : new Revision( $rec, $flags );
 	}
 
@@ -116,7 +132,7 @@ class Revision implements IDBAccessObject {
 	 * @return Revision|null
 	 */
 	public static function newFromTitle( LinkTarget $linkTarget, $id = 0, $flags = 0 ) {
-		$rec = self::getRevisionStore()->getRevisionByTitle( $linkTarget, $id, $flags );
+		$rec = self::getRevisionLookup()->getRevisionByTitle( $linkTarget, $id, $flags );
 		return $rec === null ? null : new Revision( $rec, $flags );
 	}
 
@@ -135,7 +151,7 @@ class Revision implements IDBAccessObject {
 	 * @return Revision|null
 	 */
 	public static function newFromPageId( $pageId, $revId = 0, $flags = 0 ) {
-		$rec = self::getRevisionStore()->getRevisionByPageId( $pageId, $revId, $flags );
+		$rec = self::getRevisionLookup()->getRevisionByPageId( $pageId, $revId, $flags );
 		return $rec === null ? null : new Revision( $rec, $flags );
 	}
 
@@ -184,7 +200,7 @@ class Revision implements IDBAccessObject {
 			}
 		}
 
-		$rec = self::getRevisionStore()->newRevisionFromArchiveRow( $row, 0, null, $overrides );
+		$rec = self::getRevisionFactory()->newRevisionFromArchiveRow( $row, 0, $title, $overrides );
 		return new Revision( $rec, self::READ_NORMAL, $title );
 	}
 
@@ -193,17 +209,18 @@ class Revision implements IDBAccessObject {
 	 *
 	 * MCR migration note: replaced by RevisionStore::newRevisionFromRow(). Note that
 	 * newFromRow() also accepts arrays, while newRevisionFromRow() does not. Instead,
-	 * a MutableRevisionRecord should be constructed directly. RevisionStore::newRevisionFromArray()
-	 * can be used as a temporary replacement, but should be avoided.
+	 * a MutableRevisionRecord should be constructed directly.
+	 * RevisionStore::newMutableRevisionFromArray() can be used as a temporary replacement,
+	 * but should be avoided.
 	 *
 	 * @param object|array $row
 	 * @return Revision
 	 */
 	public static function newFromRow( $row ) {
 		if ( is_array( $row ) ) {
-			$rec = self::getRevisionStore()->newMutableRevisionFromArray( $row );
+			$rec = self::getRevisionFactory()->newMutableRevisionFromArray( $row );
 		} else {
-			$rec = self::getRevisionStore()->newRevisionFromRow( $row );
+			$rec = self::getRevisionFactory()->newRevisionFromRow( $row );
 		}
 
 		return new Revision( $rec );
@@ -264,7 +281,8 @@ class Revision implements IDBAccessObject {
 	 * WARNING: Timestamps may in some circumstances not be unique,
 	 * so this isn't the best key to use.
 	 *
-	 * @deprecated since 1.31, use RevisionStore::loadRevisionFromTimestamp() instead.
+	 * @deprecated since 1.31, use RevisionStore::getRevisionByTimestamp()
+	 *   or RevisionStore::loadRevisionFromTimestamp() instead.
 	 *
 	 * @param IDatabase $db
 	 * @param Title $title
@@ -272,7 +290,6 @@ class Revision implements IDBAccessObject {
 	 * @return Revision|null
 	 */
 	public static function loadFromTimestamp( $db, $title, $timestamp ) {
-		// XXX: replace loadRevisionFromTimestamp by getRevisionByTimestamp?
 		$rec = self::getRevisionStore()->loadRevisionFromTimestamp( $db, $title, $timestamp );
 		return $rec === null ? null : new Revision( $rec );
 	}
@@ -461,6 +478,9 @@ class Revision implements IDBAccessObject {
 
 	/**
 	 * Do a batched query to get the parent revision lengths
+	 *
+	 * @deprecated in 1.31, use RevisionStore::getRevisionSizes instead.
+	 *
 	 * @param IDatabase $db
 	 * @param array $revIds
 	 * @return array
@@ -482,26 +502,73 @@ class Revision implements IDBAccessObject {
 		if ( $row instanceof RevisionRecord ) {
 			$this->mRecord = $row;
 		} elseif ( is_array( $row ) ) {
+			// If no user is specified, fall back to using the global user object, to stay
+			// compatible with pre-1.31 behavior.
 			if ( !isset( $row['user'] ) && !isset( $row['user_text'] ) ) {
 				$row['user'] = $wgUser;
 			}
 
-			$this->mRecord = self::getRevisionStore()->newMutableRevisionFromArray(
+			$this->mRecord = self::getRevisionFactory()->newMutableRevisionFromArray(
 				$row,
 				$queryFlags,
-				$title
+				$this->ensureTitle( $row, $queryFlags, $title )
 			);
 		} elseif ( is_object( $row ) ) {
-			$this->mRecord = self::getRevisionStore()->newRevisionFromRow(
+			$this->mRecord = self::getRevisionFactory()->newRevisionFromRow(
 				$row,
 				$queryFlags,
-				$title
+				$this->ensureTitle( $row, $queryFlags, $title )
 			);
 		} else {
 			throw new InvalidArgumentException(
 				'$row must be a row object, an associative array, or a RevisionRecord'
 			);
 		}
+	}
+
+	/**
+	 * Make sure we have *some* Title object for use by the constructor.
+	 * For B/C, the constructor shouldn't fail even for a bad page ID or bad revision ID.
+	 *
+	 * @param array|object $row
+	 * @param int $queryFlags
+	 * @param Title|null $title
+	 *
+	 * @return Title $title if not null, or a Title constructed from information in $row.
+	 */
+	private function ensureTitle( $row, $queryFlags, $title = null ) {
+		if ( $title ) {
+			return $title;
+		}
+
+		if ( is_array( $row ) ) {
+			if ( isset( $row['title'] ) ) {
+				if ( !( $row['title'] instanceof Title ) ) {
+					throw new MWException( 'title field must contain a Title object.' );
+				}
+
+				return $row['title'];
+			}
+
+			$pageId = isset( $row['page'] ) ? $row['page'] : 0;
+			$revId = isset( $row['id'] ) ? $row['id'] : 0;
+		} else {
+			$pageId = isset( $row->rev_page ) ? $row->rev_page : 0;
+			$revId = isset( $row->rev_id ) ? $row->rev_id : 0;
+		}
+
+		try {
+			$title = self::getRevisionStore()->getTitle( $pageId, $revId, $queryFlags );
+		} catch ( RevisionAccessException $ex ) {
+			// construct a dummy title!
+			wfLogWarning( __METHOD__ . ': ' . $ex->getMessage() );
+
+			// NOTE: this Title will only be used inside RevisionRecord
+			$title = Title::makeTitleSafe( NS_SPECIAL, "Badtitle/ID=$pageId" );
+			$title->resetArticleID( $pageId );
+		}
+
+		return $title;
 	}
 
 	/**
@@ -602,20 +669,27 @@ class Revision implements IDBAccessObject {
 	/**
 	 * Returns the length of the text in this revision, or null if unknown.
 	 *
-	 * @return int
+	 * @return int|null
 	 */
 	public function getSize() {
-		return $this->mRecord->getSize();
+		try {
+			return $this->mRecord->getSize();
+		} catch ( RevisionAccessException $ex ) {
+			return null;
+		}
 	}
 
 	/**
 	 * Returns the base36 sha1 of the content in this revision, or null if unknown.
 	 *
-	 * @return string
+	 * @return string|null
 	 */
 	public function getSha1() {
-		// XXX: we may want to drop all the hashing logic, it's not worth the overhead.
-		return $this->mRecord->getSha1();
+		try {
+			return $this->mRecord->getSha1();
+		} catch ( RevisionAccessException $ex ) {
+			return null;
+		}
 	}
 
 	/**
@@ -773,7 +847,7 @@ class Revision implements IDBAccessObject {
 	 * @return int Rcid of the unpatrolled row, zero if there isn't one
 	 */
 	public function isUnpatrolled() {
-		return self::getRevisionStore()->isUnpatrolled( $this->mRecord );
+		return self::getRevisionStore()->getRcIdIfUnpatrolled( $this->mRecord );
 	}
 
 	/**
@@ -917,8 +991,9 @@ class Revision implements IDBAccessObject {
 	 * @return Revision|null
 	 */
 	public function getPrevious() {
-		$rec = self::getRevisionStore()->getPreviousRevision( $this->mRecord );
-		return $rec === null ? null : new Revision( $rec );
+		$title = $this->getTitle();
+		$rec = self::getRevisionLookup()->getPreviousRevision( $this->mRecord, $title );
+		return $rec === null ? null : new Revision( $rec, self::READ_NORMAL, $title );
 	}
 
 	/**
@@ -927,8 +1002,9 @@ class Revision implements IDBAccessObject {
 	 * @return Revision|null
 	 */
 	public function getNext() {
-		$rec = self::getRevisionStore()->getNextRevision( $this->mRecord );
-		return $rec === null ? null : new Revision( $rec );
+		$title = $this->getTitle();
+		$rec = self::getRevisionLookup()->getNextRevision( $this->mRecord, $title );
+		return $rec === null ? null : new Revision( $rec, self::READ_NORMAL, $title );
 	}
 
 	/**
@@ -1057,7 +1133,11 @@ class Revision implements IDBAccessObject {
 
 		$comment = CommentStoreComment::newUnsavedComment( $summary, null );
 
-		$title = Title::newFromID( $pageId );
+		$title = Title::newFromID( $pageId, Title::GAID_FOR_UPDATE );
+		if ( $title === null ) {
+			return null;
+		}
+
 		$rec = self::getRevisionStore()->newNullRevision( $dbw, $title, $comment, $minor, $user );
 
 		return new Revision( $rec );
@@ -1179,7 +1259,11 @@ class Revision implements IDBAccessObject {
 			? $pageIdOrTitle
 			: Title::newFromID( $pageIdOrTitle );
 
-		$record = self::getRevisionStore()->getKnownCurrentRevision( $title, $revId );
+		if ( !$title ) {
+			return false;
+		}
+
+		$record = self::getRevisionLookup()->getKnownCurrentRevision( $title, $revId );
 		return $record ? new Revision( $record ) : false;
 	}
 }

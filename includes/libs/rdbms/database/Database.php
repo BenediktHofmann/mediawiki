@@ -317,8 +317,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 *   - flags : Optional bitfield of DBO_* constants that define connection, protocol,
 	 *      buffering, and transaction behavior. It is STRONGLY adviced to leave the DBO_DEFAULT
 	 *      flag in place UNLESS this this database simply acts as a key/value store.
-	 *   - driver: Optional name of a specific DB client driver. For MySQL, there is the old
-	 *      'mysql' driver and the newer 'mysqli' driver.
+	 *   - driver: Optional name of a specific DB client driver. For MySQL, there is only the
+	 *      'mysqli' driver; the old one 'mysql' has been removed.
 	 *   - variables: Optional map of session variables to set after connecting. This can be
 	 *      used to adjust lock timeouts or encoding modes and the like.
 	 *   - connLogger: Optional PSR-3 logger interface instance.
@@ -336,52 +336,49 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @since 1.18
 	 */
 	final public static function factory( $dbType, $p = [] ) {
-		static $canonicalDBTypes = [
-			'mysql' => [ 'mysqli', 'mysql' ],
-			'postgres' => [],
-			'sqlite' => [],
-			'oracle' => [],
-			'mssql' => [],
-		];
-		static $classAliases = [
-			'DatabaseMssql' => DatabaseMssql::class,
-			'DatabaseMysql' => DatabaseMysql::class,
-			'DatabaseMysqli' => DatabaseMysqli::class,
-			'DatabaseSqlite' => DatabaseSqlite::class,
-			'DatabasePostgres' => DatabasePostgres::class
+		// For database types with built-in support, the below maps type to IDatabase
+		// implementations. For types with multipe driver implementations (PHP extensions),
+		// an array can be used, keyed by extension name. In case of an array, the
+		// optional 'driver' parameter can be used to force a specific driver. Otherwise,
+		// we auto-detect the first available driver. For types without built-in support,
+		// an class named "Database<Type>" us used, eg. DatabaseFoo for type 'foo'.
+		static $builtinTypes = [
+			'mssql' => DatabaseMssql::class,
+			'mysql' => [ 'mysqli' => DatabaseMysqli::class ],
+			'sqlite' => DatabaseSqlite::class,
+			'postgres' => DatabasePostgres::class,
 		];
 
-		$driver = false;
 		$dbType = strtolower( $dbType );
-		if ( isset( $canonicalDBTypes[$dbType] ) && $canonicalDBTypes[$dbType] ) {
-			$possibleDrivers = $canonicalDBTypes[$dbType];
-			if ( !empty( $p['driver'] ) ) {
-				if ( in_array( $p['driver'], $possibleDrivers ) ) {
-					$driver = $p['driver'];
-				} else {
-					throw new InvalidArgumentException( __METHOD__ .
-						" type '$dbType' does not support driver '{$p['driver']}'" );
-				}
+		$class = false;
+		if ( isset( $builtinTypes[$dbType] ) ) {
+			$possibleDrivers = $builtinTypes[$dbType];
+			if ( is_string( $possibleDrivers ) ) {
+				$class = $possibleDrivers;
 			} else {
-				foreach ( $possibleDrivers as $posDriver ) {
-					if ( extension_loaded( $posDriver ) ) {
-						$driver = $posDriver;
-						break;
+				if ( !empty( $p['driver'] ) ) {
+					if ( !isset( $possibleDrivers[$p['driver']] ) ) {
+						throw new InvalidArgumentException( __METHOD__ .
+							" type '$dbType' does not support driver '{$p['driver']}'" );
+					} else {
+						$class = $possibleDrivers[$p['driver']];
+					}
+				} else {
+					foreach ( $possibleDrivers as $posDriver => $possibleClass ) {
+						if ( extension_loaded( $posDriver ) ) {
+							$class = $possibleClass;
+							break;
+						}
 					}
 				}
 			}
 		} else {
-			$driver = $dbType;
+			$class = 'Database' . ucfirst( $dbType );
 		}
 
-		if ( $driver === false || $driver === '' ) {
+		if ( $class === false ) {
 			throw new InvalidArgumentException( __METHOD__ .
 				" no viable database extension found for type '$dbType'" );
-		}
-
-		$class = 'Database' . ucfirst( $driver );
-		if ( isset( $classAliases[$class] ) ) {
-			$class = $classAliases[$class];
 		}
 
 		if ( class_exists( $class ) && is_subclass_of( $class, IDatabase::class ) ) {
@@ -394,7 +391,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			$p['variables'] = isset( $p['variables'] ) ? $p['variables'] : [];
 			$p['tablePrefix'] = isset( $p['tablePrefix'] ) ? $p['tablePrefix'] : '';
 			$p['schema'] = isset( $p['schema'] ) ? $p['schema'] : '';
-			$p['cliMode'] = isset( $p['cliMode'] ) ? $p['cliMode'] : ( PHP_SAPI === 'cli' );
+			$p['cliMode'] = isset( $p['cliMode'] )
+				? $p['cliMode']
+				: ( PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg' );
 			$p['agent'] = isset( $p['agent'] ) ? $p['agent'] : '';
 			if ( !isset( $p['connLogger'] ) ) {
 				$p['connLogger'] = new \Psr\Log\NullLogger();
@@ -3390,6 +3389,12 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		$fname = __METHOD__,
 		callable $inputCallback = null
 	) {
+		$delimiterReset = new ScopedCallback(
+			function ( $delimiter ) {
+				$this->delimiter = $delimiter;
+			},
+			[ $this->delimiter ]
+		);
 		$cmd = '';
 
 		while ( !feof( $fp ) ) {
@@ -3418,7 +3423,15 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			if ( $done || feof( $fp ) ) {
 				$cmd = $this->replaceVars( $cmd );
 
-				if ( !$inputCallback || call_user_func( $inputCallback, $cmd ) ) {
+				if ( $inputCallback ) {
+					$callbackResult = call_user_func( $inputCallback, $cmd );
+
+					if ( is_string( $callbackResult ) || !$callbackResult ) {
+						$cmd = $callbackResult;
+					}
+				}
+
+				if ( $cmd ) {
 					$res = $this->query( $cmd, $fname );
 
 					if ( $resultCallback ) {
@@ -3435,6 +3448,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			}
 		}
 
+		ScopedCallback::consume( $delimiterReset );
 		return true;
 	}
 
