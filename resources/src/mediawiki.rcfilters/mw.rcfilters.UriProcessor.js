@@ -3,10 +3,20 @@
 	/**
 	 * URI Processor for RCFilters
 	 *
+	 * @class
+	 *
+	 * @constructor
 	 * @param {mw.rcfilters.dm.FiltersViewModel} filtersModel Filters view model
+	 * @param {Object} [config] Configuration object
+	 * @cfg {boolean} [normalizeTarget] Dictates whether or not to go through the
+	 *  title normalization to separate title subpage/parts into the target= url
+	 *  parameter
 	 */
-	mw.rcfilters.UriProcessor = function MwRcfiltersController( filtersModel ) {
+	mw.rcfilters.UriProcessor = function MwRcfiltersController( filtersModel, config ) {
+		config = config || {};
 		this.filtersModel = filtersModel;
+
+		this.normalizeTarget = !!config.normalizeTarget;
 	};
 
 	/* Initialization */
@@ -100,7 +110,12 @@
 	 */
 	mw.rcfilters.UriProcessor.prototype._normalizeTargetInUri = function ( uri ) {
 		var parts,
-			re = /^((?:\/.+\/)?.+:.+)\/(.+)$/; // matches [namespace:]Title/Subpage
+			// matches [/wiki/]SpecialNS:RCL/[Namespace:]Title/Subpage/Subsubpage/etc
+			re = /^((?:\/.+?\/)?.*?:.*?)\/(.*)$/;
+
+		if ( !this.normalizeTarget ) {
+			return uri;
+		}
 
 		// target in title param
 		if ( uri.query.title ) {
@@ -112,7 +127,7 @@
 		}
 
 		// target in path
-		parts = uri.path.match( re );
+		parts = mw.Uri.decode( uri.path ).match( re );
 		if ( parts ) {
 			uri.path = parts[ 1 ];
 			uri.query.target = parts[ 2 ];

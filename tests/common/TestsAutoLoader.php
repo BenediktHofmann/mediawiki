@@ -24,7 +24,7 @@
 global $wgAutoloadClasses;
 $testDir = __DIR__ . "/..";
 
-// @codingStandardsIgnoreStart Generic.Files.LineLength.TooLong
+// phpcs:disable Generic.Files.LineLength
 $wgAutoloadClasses += [
 
 	# tests/common
@@ -62,6 +62,7 @@ $wgAutoloadClasses += [
 	'TestUser' => "$testDir/phpunit/includes/TestUser.php",
 	'TestUserRegistry' => "$testDir/phpunit/includes/TestUserRegistry.php",
 	'LessFileCompilationTest' => "$testDir/phpunit/LessFileCompilationTest.php",
+	'MediaWikiCoversValidator' => "$testDir/phpunit/MediaWikiCoversValidator.php",
 
 	# tests/phpunit/includes
 	'RevisionDbTestBase' => "$testDir/phpunit/includes/RevisionDbTestBase.php",
@@ -149,7 +150,8 @@ $wgAutoloadClasses += [
 	'GenericArrayObjectTest' => "$testDir/phpunit/includes/libs/GenericArrayObjectTest.php",
 
 	# tests/phpunit/maintenance
-	'DumpTestCase' => "$testDir/phpunit/maintenance/DumpTestCase.php",
+	'MediaWiki\Tests\Maintenance\DumpTestCase' => "$testDir/phpunit/maintenance/DumpTestCase.php",
+	'MediaWiki\Tests\Maintenance\MaintenanceBaseTestCase' => "$testDir/phpunit/maintenance/MaintenanceBaseTestCase.php",
 
 	# tests/phpunit/media
 	'FakeDimensionFile' => "$testDir/phpunit/includes/media/FakeDimensionFile.php",
@@ -174,4 +176,4 @@ $wgAutoloadClasses += [
 	'ParserTestFileSuite' => "$testDir/phpunit/suites/ParserTestFileSuite.php",
 	'ParserTestTopLevelSuite' => "$testDir/phpunit/suites/ParserTestTopLevelSuite.php",
 ];
-// @codingStandardsIgnoreEnd
+// phpcs:enable

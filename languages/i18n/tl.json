@@ -520,6 +520,7 @@
 	"changepassword-success": "Nabago ang iyong password!",
 	"changepassword-throttled": "Masyadong madami ang kamakailan lamang mong pagsubok sa pag-login.\nMaghintay po muna ng $1 bago subukan uli.",
 	"botpasswords": "Mga password ng bot",
+	"botpasswords-label-appid": "Pangalan ng bot:",
 	"botpasswords-label-delete": "Burahin",
 	"botpasswords-label-resetpassword": "Itakdang-muli/baguhin ang hudyat (password)",
 	"botpasswords-label-grants-column": "Ipinagkaloob na",
@@ -1820,7 +1821,6 @@
 	"sp-contributions-toponly": "Ipakita lang ang mga pamamatnugot na mga huling rebisyon",
 	"sp-contributions-newonly": "Ipakita lang ang mga pamamatnugot na mga nalikhang pahina",
 	"sp-contributions-submit": "Hanapin",
-	"sp-contributions-explain": "",
 	"whatlinkshere": "Mga nakaturo dito",
 	"whatlinkshere-title": "Mga pahinang kumakawing sa $1",
 	"whatlinkshere-page": "Pahina:",
@@ -3050,5 +3050,6 @@
 	"mw-widgets-dateinput-placeholder-month": "TTTT-BB",
 	"date-range-from": "Mula sa petsang:",
 	"randomrootpage": "Alin mang pinag-ugatang/pinagmulang pahina",
+	"edit-error-long": "Mga kamalian:",
 	"gotointerwiki-invalid": "Di-wasto ang tinukoy na pamagat."
 }

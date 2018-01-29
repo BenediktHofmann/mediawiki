@@ -104,7 +104,7 @@ class RebuildFileCache extends Maintenance {
 			$res = $dbr->select( 'page',
 				[ 'page_namespace', 'page_title', 'page_id' ],
 				[ 'page_namespace' => MWNamespace::getContentNamespaces(),
-					"page_id BETWEEN $blockStart AND $blockEnd" ],
+					"page_id BETWEEN " . (int)$blockStart . " AND " . (int)$blockEnd ],
 				__METHOD__,
 				[ 'ORDER BY' => 'page_id ASC', 'USE INDEX' => 'PRIMARY' ]
 			);
@@ -179,5 +179,5 @@ class RebuildFileCache extends Maintenance {
 	}
 }
 
-$maintClass = "RebuildFileCache";
+$maintClass = RebuildFileCache::class;
 require_once RUN_MAINTENANCE_IF_MAIN;

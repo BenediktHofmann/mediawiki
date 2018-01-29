@@ -20,7 +20,6 @@
  * @file
  */
 
-use IPSet\IPSet;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Session\SessionManager;
 use MediaWiki\Session\Token;
@@ -28,6 +27,7 @@ use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Auth\AuthenticationRequest;
 use MediaWiki\User\UserIdentity;
+use Wikimedia\IPSet;
 use Wikimedia\ScopedCallback;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\DBExpectedError;
@@ -228,12 +228,7 @@ class User implements IDBAccessObject, UserIdentity {
 	protected $mRegistration;
 	/** @var int */
 	protected $mEditCount;
-	/**
-	 * @var array No longer used since 1.29; use User::getGroups() instead
-	 * @deprecated since 1.29
-	 */
-	private $mGroups;
-	/** @var array Associative array of (group name => UserGroupMembership object) */
+	/** @var UserGroupMembership[] Associative array of (group name => UserGroupMembership object) */
 	protected $mGroupMemberships;
 	/** @var array */
 	protected $mOptionOverrides;
@@ -389,7 +384,8 @@ class User implements IDBAccessObject, UserIdentity {
 				break;
 			case 'name':
 				// Make sure this thread sees its own changes
-				if ( wfGetLB()->hasOrMadeRecentMasterChanges() ) {
+				$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
+				if ( $lb->hasOrMadeRecentMasterChanges() ) {
 					$flags |= self::READ_LATEST;
 					$this->queryFlagsUsed = $flags;
 				}
@@ -3088,12 +3084,13 @@ class User implements IDBAccessObject, UserIdentity {
 			$options = $this->mOptions;
 		}
 
-		$prefs = Preferences::getPreferences( $this, $context );
+		$preferencesFactory = MediaWikiServices::getInstance()->getPreferencesFactory();
+		$prefs = $preferencesFactory->getFormDescriptor( $this, $context );
 		$mapping = [];
 
 		// Pull out the "special" options, so they don't get converted as
 		// multiselect or checkmatrix.
-		$specialOptions = array_fill_keys( Preferences::getSaveBlacklist(), true );
+		$specialOptions = array_fill_keys( $preferencesFactory->getSaveBlacklist(), true );
 		foreach ( $specialOptions as $name => $value ) {
 			unset( $prefs[$name] );
 		}
@@ -3316,7 +3313,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 * Get the list of explicit group memberships this user has, stored as
 	 * UserGroupMembership objects. Implicit groups are not included.
 	 *
-	 * @return array Associative array of (group name as string => UserGroupMembership object)
+	 * @return UserGroupMembership[] Associative array of (group name => UserGroupMembership object)
 	 * @since 1.29
 	 */
 	public function getGroupMemberships() {
@@ -4582,7 +4579,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 * (T8957 with Gmail and Internet Explorer).
 	 *
 	 * @param string $page Special page
-	 * @param string $token Token
+	 * @param string $token
 	 * @return string Formatted URL
 	 */
 	protected function getTokenUrl( $page, $token ) {

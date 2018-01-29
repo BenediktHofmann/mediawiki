@@ -65,7 +65,7 @@ class PopulateRecentChangesSource extends LoggedUpdateMaintenance {
 				[ $updatedValues ],
 				[
 					"rc_source = ''",
-					"rc_id BETWEEN $blockStart AND $blockEnd"
+					"rc_id BETWEEN " . (int)$blockStart . " AND " . (int)$blockEnd
 				],
 				__METHOD__
 			);
@@ -104,5 +104,5 @@ class PopulateRecentChangesSource extends LoggedUpdateMaintenance {
 	}
 }
 
-$maintClass = "PopulateRecentChangesSource";
+$maintClass = PopulateRecentChangesSource::class;
 require_once RUN_MAINTENANCE_IF_MAIN;

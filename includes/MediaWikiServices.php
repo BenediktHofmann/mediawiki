@@ -10,7 +10,14 @@ use GenderCache;
 use GlobalVarConfig;
 use Hooks;
 use IBufferingStatsdDataFactory;
+use MediaWiki\Http\HttpRequestFactory;
+use MediaWiki\Preferences\PreferencesFactory;
 use MediaWiki\Shell\CommandFactory;
+use MediaWiki\Storage\BlobStore;
+use MediaWiki\Storage\BlobStoreFactory;
+use MediaWiki\Storage\RevisionFactory;
+use MediaWiki\Storage\RevisionLookup;
+use MediaWiki\Storage\RevisionStore;
 use Wikimedia\Rdbms\LBFactory;
 use LinkCache;
 use Wikimedia\Rdbms\LoadBalancer;
@@ -696,6 +703,62 @@ class MediaWikiServices extends ServiceContainer {
 	 */
 	public function getExternalStoreFactory() {
 		return $this->getService( 'ExternalStoreFactory' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return BlobStoreFactory
+	 */
+	public function getBlobStoreFactory() {
+		return $this->getService( 'BlobStoreFactory' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return BlobStore
+	 */
+	public function getBlobStore() {
+		return $this->getService( '_SqlBlobStore' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return RevisionStore
+	 */
+	public function getRevisionStore() {
+		return $this->getService( 'RevisionStore' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return RevisionLookup
+	 */
+	public function getRevisionLookup() {
+		return $this->getService( 'RevisionLookup' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return RevisionFactory
+	 */
+	public function getRevisionFactory() {
+		return $this->getService( 'RevisionFactory' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return PreferencesFactory
+	 */
+	public function getPreferencesFactory() {
+		return $this->getService( 'PreferencesFactory' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return HttpRequestFactory
+	 */
+	public function getHttpRequestFactory() {
+		return $this->getService( 'HttpRequestFactory' );
 	}
 
 	///////////////////////////////////////////////////////////////////////////

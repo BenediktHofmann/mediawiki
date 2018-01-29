@@ -332,7 +332,7 @@ class ExtensionProcessorTest extends MediaWikiTestCase {
 	public function testExtractCredits() {
 		$processor = new ExtensionProcessor();
 		$processor->extractInfo( $this->dir, self::$default, 1 );
-		$this->setExpectedException( 'Exception' );
+		$this->setExpectedException( Exception::class );
 		$processor->extractInfo( $this->dir, self::$default, 1 );
 	}
 
@@ -607,6 +607,11 @@ class ExtensionProcessorTest extends MediaWikiTestCase {
 		$this->assertSame( [ 'ext.baz.fizzbuzz' ], $info['attributes']['FizzBuzzMorePlugins'] );
 	}
 
+	/**
+	 * Verify that extension.schema.json is in sync with ExtensionProcessor
+	 *
+	 * @coversNothing
+	 */
 	public function testGlobalSettingsDocumentedInSchema() {
 		global $IP;
 		$globalSettings = TestingAccessWrapper::newFromClass(

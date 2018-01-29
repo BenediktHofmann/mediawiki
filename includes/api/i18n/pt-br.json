@@ -13,7 +13,8 @@
 			"Eduardo Addad de Oliveira",
 			"Warley Felipe C.",
 			"TheEduGobi",
-			"Felipe L. Ewald"
+			"Felipe L. Ewald",
+			"Hamilton Abreu"
 		]
 	},
 	"apihelp-main-extended-description": "<div class=\"hlist plainlinks api-main-links\">\n* [[mw:Special:MyLanguage/API:Main_page|Documentação]]\n* [[mw:Special:MyLanguage/API:FAQ|FAQ]]\n* [https://lists.wikimedia.org/mailman/listinfo/mediawiki-api Lista de discussão]\n* [https://lists.wikimedia.org/mailman/listinfo/mediawiki-api-announce Anúncios da API]\n* [https://phabricator.wikimedia.org/maniphest/query/GebfyV4uCaLd/#R Bugs & solicitações]\n</div>\n<strong>Status:</strong> Todos os recursos exibidos nesta página devem estar funcionando, mas a API ainda está em desenvolvimento ativo e pode mudar a qualquer momento. Inscrever-se na [https://lists.wikimedia.org/pipermail/mediawiki-api-announce/ lista de discussão mediawiki-api-announce] para aviso de atualizações.\n\n<strong>Requisições incorretas:</strong> Quando requisições erradas são enviadas para a API, um cabeçalho HTTP será enviado com a chave \"MediaWiki-API-Error\" e então o valor do cabeçalho e o código de erro enviados de volta serão definidos para o mesmo valor. Para mais informações, veja [[mw:Special:MyLanguage/API:Errors_and_warnings|API: Erros e avisos]].\n\n<strong>Testando:</strong> Para facilitar o teste das requisições da API, consulte [[Special:ApiSandbox]].",
@@ -67,6 +68,7 @@
 	"apihelp-compare-param-fromid": "Primeiro ID de página para comparar.",
 	"apihelp-compare-param-fromrev": "Primeira revisão para comparar.",
 	"apihelp-compare-param-fromtext": "Use este texto em vez do conteúdo da revisão especificada por <var>fromtitle</var>, <var>fromid</var> ou <var>fromrev</var>.",
+	"apihelp-compare-param-fromsection": "Utilizar apenas a secção especificada do conteúdo 'from' especificado.",
 	"apihelp-compare-param-frompst": "Faz uma transformação pré-salvar em <var>fromtext</var>.",
 	"apihelp-compare-param-fromcontentmodel": "Modelo de conteúdo de <var>fromtext</var>. Se não for fornecido, será adivinhado com base nos outros parâmetros.",
 	"apihelp-compare-param-fromcontentformat": "Formato de serialização de conteúdo de <var>fromtext</var>.",
@@ -1551,6 +1553,8 @@
 	"apierror-chunk-too-small": "O tamanho mínimo do bloco é $1 {{PLURAL:$1|byte|bytes}} para os pedaços não finais.",
 	"apierror-cidrtoobroad": "Os intervalos CIDR $1 maiores que /$2 não são aceitos.",
 	"apierror-compare-no-title": "Não é possível pré-salvar a transformação sem um título. Tente especificar <var>fromtitle</var> ou <var>totitle</var>.",
+	"apierror-compare-nosuchfromsection": "Não há nenhuma secção $1 no conteúdo 'from'.",
+	"apierror-compare-nosuchtosection": "Não há nenhuma seção $1 no conteúdo 'to'.",
 	"apierror-compare-relative-to-nothing": "Nenhuma revisão 'from' para <var>torelative</var> para ser relativa à.",
 	"apierror-contentserializationexception": "Falha na serialização de conteúdo: $1",
 	"apierror-contenttoobig": "O conteúdo fornecido excede o limite de tamanho do artigo de $1 {{PLURAL: $1|kilobyte|kilobytes}}.",

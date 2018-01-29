@@ -55,8 +55,8 @@ class CleanupBlocks extends Maintenance {
 				'ipblocks',
 				[ 'ipb_user' ],
 				[
-					"ipb_user >= $from",
-					"ipb_user <= $to",
+					"ipb_user >= " . (int)$from,
+					"ipb_user <= " . (int)$to,
 				],
 				__METHOD__,
 				[
@@ -128,8 +128,8 @@ class CleanupBlocks extends Maintenance {
 				[ 'ipb_id', 'user_name' ],
 				[
 					'ipb_user = user_id',
-					"ipb_user >= $from",
-					"ipb_user <= $to",
+					"ipb_user >= " . (int)$from,
+					"ipb_user <= " . (int)$to,
 					'ipb_address != user_name',
 				],
 				__METHOD__
@@ -148,5 +148,5 @@ class CleanupBlocks extends Maintenance {
 	}
 }
 
-$maintClass = "CleanupBlocks";
+$maintClass = CleanupBlocks::class;
 require_once RUN_MAINTENANCE_IF_MAIN;

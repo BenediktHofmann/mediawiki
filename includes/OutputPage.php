@@ -23,8 +23,9 @@
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Session\SessionManager;
-use WrappedString\WrappedString;
-use WrappedString\WrappedStringList;
+use Wikimedia\RelPath;
+use Wikimedia\WrappedString;
+use Wikimedia\WrappedStringList;
 
 /**
  * This class should be covered by a general architecture document which does
@@ -323,7 +324,7 @@ class OutputPage extends ContextSource {
 	/**
 	 * Redirect to $url rather than displaying the normal page
 	 *
-	 * @param string $url URL
+	 * @param string $url
 	 * @param string $responsecode HTTP status code
 	 */
 	public function redirect( $url, $responsecode = '302' ) {
@@ -366,8 +367,8 @@ class OutputPage extends ContextSource {
 	 * Add a new "<meta>" tag
 	 * To add an http-equiv meta tag, precede the name with "http:"
 	 *
-	 * @param string $name Tag name
-	 * @param string $val Tag value
+	 * @param string $name Name of the meta tag
+	 * @param string $val Value of the meta tag
 	 */
 	function addMeta( $name, $val ) {
 		array_push( $this->mMetatags, [ $name, $val ] );
@@ -3243,6 +3244,8 @@ class OutputPage extends ContextSource {
 			&& ( $relevantTitle->exists() || $relevantTitle->quickUserCan( 'create', $user ) );
 
 		foreach ( $title->getRestrictionTypes() as $type ) {
+			// Following keys are set in $vars:
+			// wgRestrictionCreate, wgRestrictionEdit, wgRestrictionMove, wgRestrictionUpload
 			$vars['wgRestriction' . ucfirst( $type )] = $title->getRestrictions( $type );
 		}
 
@@ -3331,10 +3334,14 @@ class OutputPage extends ContextSource {
 		] );
 
 		if ( $config->get( 'ReferrerPolicy' ) !== false ) {
-			$tags['meta-referrer'] = Html::element( 'meta', [
-				'name' => 'referrer',
-				'content' => $config->get( 'ReferrerPolicy' )
-			] );
+			// Per https://w3c.github.io/webappsec-referrer-policy/#unknown-policy-values
+			// fallbacks should come before the primary value so we need to reverse the array.
+			foreach ( array_reverse( (array)$config->get( 'ReferrerPolicy' ) ) as $i => $policy ) {
+				$tags["meta-referrer-$i"] = Html::element( 'meta', [
+					'name' => 'referrer',
+					'content' => $policy,
+				] );
+			}
 		}
 
 		$p = "{$this->mIndexPolicy},{$this->mFollowPolicy}";
@@ -3812,7 +3819,7 @@ class OutputPage extends ContextSource {
 			$remotePathPrefix = $remotePath = $uploadPath;
 		}
 
-		$path = RelPath\getRelativePath( $path, $remotePath );
+		$path = RelPath::getRelativePath( $path, $remotePath );
 		return self::transformFilePath( $remotePathPrefix, $localDir, $path );
 	}
 

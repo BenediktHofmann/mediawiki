@@ -27,7 +27,8 @@
 			"Asmen",
 			"Obsuser",
 			"Zoranzoki21",
-			"Prevodim"
+			"Prevodim",
+			"Bugoslav"
 		]
 	},
 	"tog-underline": "Podvlačenje veza:",
@@ -3209,6 +3210,7 @@
 	"tag-filter-submit": "Filtriraj",
 	"tag-list-wrapper": "([[Special:Tags|{{PLURAL:$1|Oznaka|Oznake}}]]: $2)",
 	"tag-mw-contentmodelchange-description": "Izmene koje menjaju model sadržaja stranice",
+	"tag-mw-rollback": "Vraćanje",
 	"tags-title": "Oznake",
 	"tags-intro": "Na ovoj stranici je naveden spisak oznaka s kojima program može da označi izmene i njegovo značenje.",
 	"tags-tag": "Naziv oznake",

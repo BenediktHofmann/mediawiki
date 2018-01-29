@@ -1,7 +1,5 @@
 <?php
 /**
- * Created on Sep 4, 2006
- *
  * Copyright © 2006 Yuri Astrakhan "<Firstname><Lastname>@gmail.com"
  *
  * This program is free software; you can redistribute it and/or modify
@@ -1452,7 +1450,7 @@ class ApiMain extends ApiBase {
 
 		if ( $module->isWriteMode()
 			&& $this->getUser()->isBot()
-			&& wfGetLB()->getServerCount() > 1
+			&& MediaWikiServices::getInstance()->getDBLoadBalancer()->getServerCount() > 1
 		) {
 			$this->checkBotReadOnly();
 		}
@@ -1466,7 +1464,7 @@ class ApiMain extends ApiBase {
 		$numLagged = 0;
 		$lagLimit = $this->getConfig()->get( 'APIMaxLagThreshold' );
 		$laggedServers = [];
-		$loadBalancer = wfGetLB();
+		$loadBalancer = MediaWikiServices::getInstance()->getDBLoadBalancer();
 		foreach ( $loadBalancer->getLagTimes() as $serverIndex => $lag ) {
 			if ( $lag > $lagLimit ) {
 				++$numLagged;
@@ -1475,7 +1473,7 @@ class ApiMain extends ApiBase {
 		}
 
 		// If a majority of replica DBs are too lagged then disallow writes
-		$replicaCount = wfGetLB()->getServerCount() - 1;
+		$replicaCount = $loadBalancer->getServerCount() - 1;
 		if ( $numLagged >= ceil( $replicaCount / 2 ) ) {
 			$laggedServers = implode( ', ', $laggedServers );
 			wfDebugLog(
@@ -1933,7 +1931,7 @@ class ApiMain extends ApiBase {
 			$id = Sanitizer::escapeIdForAttribute( 'main/datatypes', Sanitizer::ID_PRIMARY );
 			$idFallback = Sanitizer::escapeIdForAttribute( 'main/datatypes', Sanitizer::ID_FALLBACK );
 			$headline = Linker::makeHeadline( min( 6, $level ),
-				' class="apihelp-header"',
+				' class="apihelp-header">',
 				$id,
 				$header,
 				'',
@@ -1961,7 +1959,7 @@ class ApiMain extends ApiBase {
 			$id = Sanitizer::escapeIdForAttribute( 'main/credits', Sanitizer::ID_PRIMARY );
 			$idFallback = Sanitizer::escapeIdForAttribute( 'main/credits', Sanitizer::ID_FALLBACK );
 			$headline = Linker::makeHeadline( min( 6, $level ),
-				' class="apihelp-header"',
+				' class="apihelp-header">',
 				$id,
 				$header,
 				'',

@@ -1326,7 +1326,7 @@ class LanguageTest extends LanguageClassesTestCase {
 	}
 
 	public static function provideCheckTitleEncodingData() {
-		// @codingStandardsIgnoreStart Ignore Generic.Files.LineLength.TooLong
+		// phpcs:disable Generic.Files.LineLength
 		return [
 			[ "" ],
 			[ "United States of America" ], // 7bit ASCII
@@ -1377,7 +1377,7 @@ class LanguageTest extends LanguageClassesTestCase {
 				)
 			]
 		];
-		// @codingStandardsIgnoreEnd
+		// phpcs:enable
 	}
 
 	/**
@@ -1630,7 +1630,7 @@ class LanguageTest extends LanguageClassesTestCase {
 	}
 
 	/**
-	 * @dataProvider testFormatNumProvider
+	 * @dataProvider provideFormatNum
 	 * @covers Language::formatNum
 	 */
 	public function testFormatNum(
@@ -1643,7 +1643,7 @@ class LanguageTest extends LanguageClassesTestCase {
 		$this->assertEquals( $expected, $formattedNum );
 	}
 
-	public function testFormatNumProvider() {
+	public function provideFormatNum() {
 		return [
 			[ true, 'en', 100, false, '100' ],
 			[ true, 'en', 101, true, '101' ],
@@ -1657,6 +1657,7 @@ class LanguageTest extends LanguageClassesTestCase {
 	}
 
 	/**
+	 * @covers Language::parseFormattedNumber
 	 * @dataProvider parseFormattedNumberProvider
 	 */
 	public function testParseFormattedNumber( $langCode, $number ) {
@@ -1795,6 +1796,9 @@ class LanguageTest extends LanguageClassesTestCase {
 		];
 	}
 
+	/**
+	 * @covers Language::equals
+	 */
 	public function testEquals() {
 		$en1 = new Language();
 		$en1->setCode( 'en' );

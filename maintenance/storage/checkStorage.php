@@ -100,8 +100,12 @@ class CheckStorage {
 			$missingTextRows = array_flip( $this->oldIdMap );
 			$externalRevs = [];
 			$objectRevs = [];
-			$res = $dbr->select( 'text', [ 'old_id', 'old_flags' ],
-				'old_id IN (' . implode( ',', $this->oldIdMap ) . ')', __METHOD__ );
+			$res = $dbr->select(
+				'text',
+				[ 'old_id', 'old_flags' ],
+				[ 'old_id' => $this->oldIdMap ],
+				__METHOD__
+			);
 			foreach ( $res as $row ) {
 				/**
 				 * @var $flags int
@@ -158,8 +162,12 @@ class CheckStorage {
 			$externalConcatBlobs = [];
 			$externalNormalBlobs = [];
 			if ( count( $externalRevs ) ) {
-				$res = $dbr->select( 'text', [ 'old_id', 'old_flags', 'old_text' ],
-					[ 'old_id IN (' . implode( ',', $externalRevs ) . ')' ], __METHOD__ );
+				$res = $dbr->select(
+					'text',
+					[ 'old_id', 'old_flags', 'old_text' ],
+					[ 'old_id' => $externalRevs ],
+					__METHOD__
+				);
 				foreach ( $res as $row ) {
 					$urlParts = explode( '://', $row->old_text, 2 );
 					if ( count( $urlParts ) !== 2 || $urlParts[1] == '' ) {
@@ -200,7 +208,9 @@ class CheckStorage {
 					$blobsTable = $this->dbStore->getTable( $extDb );
 					$res = $extDb->select( $blobsTable,
 						[ 'blob_id' ],
-						[ 'blob_id IN( ' . implode( ',', $blobIds ) . ')' ], __METHOD__ );
+						[ 'blob_id' => $blobIds ],
+						__METHOD__
+					);
 					foreach ( $res as $row ) {
 						unset( $xBlobIds[$row->blob_id] );
 					}
@@ -224,7 +234,7 @@ class CheckStorage {
 				$res = $dbr->select(
 					'text',
 					[ 'old_id', 'old_flags', "LEFT(old_text, $headerLength) AS header" ],
-					[ 'old_id IN (' . implode( ',', $objectRevs ) . ')' ],
+					[ 'old_id' => $objectRevs ],
 					__METHOD__
 				);
 				foreach ( $res as $row ) {
@@ -283,7 +293,7 @@ class CheckStorage {
 				$res = $dbr->select(
 					'text',
 					[ 'old_id', 'old_flags', "LEFT(old_text, $headerLength) AS header" ],
-					[ 'old_id IN (' . implode( ',', array_keys( $concatBlobs ) ) . ')' ],
+					[ 'old_id' => array_keys( $concatBlobs ) ],
 					__METHOD__
 				);
 				foreach ( $res as $row ) {
@@ -402,7 +412,9 @@ class CheckStorage {
 			$headerLength = strlen( self::CONCAT_HEADER );
 			$res = $extDb->select( $blobsTable,
 				[ 'blob_id', "LEFT(blob_text, $headerLength) AS header" ],
-				[ 'blob_id IN( ' . implode( ',', $blobIds ) . ')' ], __METHOD__ );
+				[ 'blob_id' => $blobIds ],
+				__METHOD__
+			);
 			foreach ( $res as $row ) {
 				if ( strcasecmp( $row->header, self::CONCAT_HEADER ) ) {
 					$this->addError(
@@ -481,6 +493,9 @@ class CheckStorage {
 			MediaWikiServices::getInstance()->getMainConfig()
 		);
 		$importer->setRevisionCallback( [ $this, 'importRevision' ] );
+		$importer->setNoticeCallback( function ( $msg, $params ) {
+			echo wfMessage( $msg, $params )->text() . "\n";
+		} );
 		$importer->doImport();
 	}
 

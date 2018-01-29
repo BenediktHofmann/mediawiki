@@ -539,13 +539,13 @@ class ImagePage extends Article {
 				// The dirmark, however, must not be immediately adjacent
 				// to the filename, because it can get copied with it.
 				// See T27277.
-				// @codingStandardsIgnoreStart Ignore long line
+				// phpcs:disable Generic.Files.LineLength
 				$out->addWikiText( <<<EOT
 <div class="fullMedia"><span class="dangerousLink">{$medialink}</span> $dirmark<span class="fileInfo">$longDesc</span></div>
 <div class="mediaWarning">$warning</div>
 EOT
 				);
-				// @codingStandardsIgnoreEnd
+				// phpcs:enable
 			} else {
 				$out->addWikiText( <<<EOT
 <div class="fullMedia">{$medialink} {$dirmark}<span class="fileInfo">$longDesc</span>
@@ -632,7 +632,7 @@ EOT
 	 * @param string $sizeLinkBigImagePreview HTML for the current size
 	 * @return string HTML output
 	 */
-	private function getThumbPrevText( $params, $sizeLinkBigImagePreview ) {
+	protected function getThumbPrevText( $params, $sizeLinkBigImagePreview ) {
 		if ( $sizeLinkBigImagePreview ) {
 			// Show a different message of preview is different format from original.
 			$previewTypeDiffers = false;
@@ -670,7 +670,7 @@ EOT
 	 * @param int $height
 	 * @return string
 	 */
-	private function makeSizeLink( $params, $width, $height ) {
+	protected function makeSizeLink( $params, $width, $height ) {
 		$params['width'] = $width;
 		$params['height'] = $height;
 		$thumbnail = $this->displayImg->transform( $params );

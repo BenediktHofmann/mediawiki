@@ -4,6 +4,9 @@
  * @covers VersionChecker
  */
 class VersionCheckerTest extends PHPUnit_Framework_TestCase {
+
+	use MediaWikiCoversValidator;
+
 	/**
 	 * @dataProvider provideCheck
 	 */
@@ -108,7 +111,7 @@ class VersionCheckerTest extends PHPUnit_Framework_TestCase {
 				],
 			] );
 
-		$this->setExpectedException( 'UnexpectedValueException' );
+		$this->setExpectedException( UnexpectedValueException::class );
 		$checker->checkArray( [
 			'FakeExtension' => [
 				'FakeDependency' => 'not really valid',

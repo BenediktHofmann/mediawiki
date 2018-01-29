@@ -71,6 +71,9 @@
 	 * Respond to the model being updated
 	 */
 	mw.rcfilters.ui.RclTargetPageWidget.prototype.updateUiBasedOnModel = function () {
-		this.titleSearch.setValue( this.model.getValue() );
+		var title = mw.Title.newFromText( this.model.getValue() ),
+			text = title ? title.toText() : this.model.getValue();
+		this.titleSearch.setValue( text );
+		this.titleSearch.setTitle( text );
 	};
 }( mediaWiki ) );

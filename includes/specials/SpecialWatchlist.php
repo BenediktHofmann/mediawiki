@@ -117,11 +117,6 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		);
 	}
 
-	public function isStructuredFilterUiEnabledByDefault() {
-		return $this->getConfig()->get( 'StructuredChangeFiltersOnWatchlist' ) &&
-			$this->getUser()->getDefaultOption( 'rcenhancedfilters' );
-	}
-
 	/**
 	 * Return an array of subpages that this special page will accept.
 	 *
@@ -491,7 +486,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$output = $this->getOutput();
 
 		# Show a message about replica DB lag, if applicable
-		$lag = wfGetLB()->safeGetLag( $dbr );
+		$lag = MediaWikiServices::getInstance()->getDBLoadBalancer()->safeGetLag( $dbr );
 		if ( $lag > 0 ) {
 			$output->showLagWarning( $lag );
 		}

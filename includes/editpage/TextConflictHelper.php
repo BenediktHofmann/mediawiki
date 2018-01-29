@@ -140,6 +140,15 @@ class TextConflictHelper {
 	 */
 	public function incrementResolvedStats() {
 		$this->stats->increment( 'edit.failures.conflict.resolved' );
+		// Only include 'standard' namespaces to avoid creating unknown numbers of statsd metrics
+		if (
+			$this->title->getNamespace() >= NS_MAIN &&
+			$this->title->getNamespace() <= NS_CATEGORY_TALK
+		) {
+			$this->stats->increment(
+				'edit.failures.conflict.resolved.byNamespaceId.' . $this->title->getNamespace()
+			);
+		}
 	}
 
 	/**
@@ -150,6 +159,33 @@ class TextConflictHelper {
 			'div',
 			[ 'class' => 'mw-explainconflict' ],
 			$this->out->msg( 'explainconflict', $this->out->msg( $this->submitLabel )->text() )->parse()
+		);
+	}
+
+	/**
+	 * HTML to build the textbox1 on edit conflicts
+	 *
+	 * @param mixed[]|null $customAttribs
+	 * @return string HTML
+	 */
+	public function getEditConflictMainTextBox( $customAttribs = [] ) {
+		$builder = new TextboxBuilder();
+		$classes = $builder->getTextboxProtectionCSSClasses( $this->title );
+
+		$attribs = [ 'tabindex' => 1 ];
+		$attribs += $customAttribs;
+
+		$attribs = $builder->mergeClassesIntoAttributes( $classes, $attribs );
+
+		$attribs = $builder->buildTextboxAttribs(
+			'wpTextbox1',
+			$attribs,
+			$this->out->getUser(),
+			$this->title
+		);
+
+		$this->out->addHTML(
+			Html::textarea( 'wpTextbox1', $builder->addNewLineAtEnd( $this->storedversion ), $attribs )
 		);
 	}
 

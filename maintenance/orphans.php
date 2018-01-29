@@ -202,8 +202,8 @@ class Orphans extends Maintenance {
 			$result2 = $dbw->query( "
 				SELECT MAX(rev_timestamp) as max_timestamp
 				FROM $revision
-				WHERE rev_page=$row->page_id
-			" );
+				WHERE rev_page=" . (int)( $row->page_id )
+			);
 			$row2 = $dbw->fetchObject( $result2 );
 			if ( $row2 ) {
 				if ( $row->rev_timestamp != $row2->max_timestamp ) {
@@ -252,5 +252,5 @@ class Orphans extends Maintenance {
 	}
 }
 
-$maintClass = "Orphans";
+$maintClass = Orphans::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
