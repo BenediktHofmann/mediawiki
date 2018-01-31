@@ -126,6 +126,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	protected $delimiter = ';';
 	/** @var DatabaseDomain */
 	protected $currentDomain;
+	/** @var integer|null Rows affected by the last query to query() or its CRUD wrappers */
+	protected $affectedRowCount;
 
 	/**
 	 * Either 1 if a transaction is active or 0 otherwise.
@@ -1002,8 +1004,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
-	 * Helper method for query() that handles profiling and logging and sends
-	 * the query to doQuery()
+	 * Wrapper for query() that also handles profiling, logging, and affected row count updates
 	 *
 	 * @param string $sql Original SQL query
 	 * @param string $commentedSql SQL query with debugging/trace comment
@@ -1029,7 +1030,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		if ( $this->profiler ) {
 			call_user_func( [ $this->profiler, 'profileIn' ], $queryProf );
 		}
+		$this->affectedRowCount = null;
 		$ret = $this->doQuery( $commentedSql );
+		$this->affectedRowCount = $this->affectedRows();
 		if ( $this->profiler ) {
 			call_user_func( [ $this->profiler, 'profileOut' ], $queryProf );
 		}
@@ -2238,51 +2241,49 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	public function replace( $table, $uniqueIndexes, $rows, $fname = __METHOD__ ) {
-		$quotedTable = $this->tableName( $table );
-
 		if ( count( $rows ) == 0 ) {
 			return;
 		}
 
-		# Single row case
+		// Single row case
 		if ( !is_array( reset( $rows ) ) ) {
 			$rows = [ $rows ];
 		}
 
-		// @FXIME: this is not atomic, but a trx would break affectedRows()
+		$affectedRowCount = 0;
 		foreach ( $rows as $row ) {
-			# Delete rows which collide
-			if ( $uniqueIndexes ) {
-				$sql = "DELETE FROM $quotedTable WHERE ";
-				$first = true;
-				foreach ( $uniqueIndexes as $index ) {
-					if ( $first ) {
-						$first = false;
-						$sql .= '( ';
-					} else {
-						$sql .= ' ) OR ( ';
-					}
-					if ( is_array( $index ) ) {
-						$first2 = true;
-						foreach ( $index as $col ) {
-							if ( $first2 ) {
-								$first2 = false;
-							} else {
-								$sql .= ' AND ';
-							}
-							$sql .= $col . '=' . $this->addQuotes( $row[$col] );
-						}
-					} else {
-						$sql .= $index . '=' . $this->addQuotes( $row[$index] );
-					}
+			// Delete rows which collide with this one
+			$indexWhereClauses = [];
+			foreach ( $uniqueIndexes as $index ) {
+				$indexColumns = (array)$index;
+				$indexRowValues = array_intersect_key( $row, array_flip( $indexColumns ) );
+				if ( count( $indexRowValues ) != count( $indexColumns ) ) {
+					throw new DBUnexpectedError(
+						$this,
+						'New record does not provide all values for unique key (' .
+							implode( ', ', $indexColumns ) . ')'
+					);
+				} elseif ( in_array( null, $indexRowValues, true ) ) {
+					throw new DBUnexpectedError(
+						$this,
+						'New record has a null value for unique key (' .
+							implode( ', ', $indexColumns ) . ')'
+					);
 				}
-				$sql .= ' )';
-				$this->query( $sql, $fname );
+				$indexWhereClauses[] = $this->makeList( $indexRowValues, LIST_AND );
 			}
 
-			# Now insert the row
+			if ( $indexWhereClauses ) {
+				$this->delete( $table, $this->makeList( $indexWhereClauses, LIST_OR ), $fname );
+				$affectedRowCount += $this->affectedRows();
+			}
+
+			// Now insert the row
 			$this->insert( $table, $row, $fname );
+			$affectedRowCount += $this->affectedRows();
 		}
+
+		$this->affectedRowCount = $affectedRowCount;
 	}
 
 	/**
@@ -2347,6 +2348,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			$where = false;
 		}
 
+		$affectedRowCount = 0;
 		$useTrx = !$this->mTrxLevel;
 		if ( $useTrx ) {
 			$this->begin( $fname, self::TRANSACTION_INTERNAL );
@@ -2355,11 +2357,13 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			# Update any existing conflicting row(s)
 			if ( $where !== false ) {
 				$ok = $this->update( $table, $set, $where, $fname );
+				$affectedRowCount += $this->affectedRows();
 			} else {
 				$ok = true;
 			}
 			# Now insert any non-conflicting row(s)
 			$ok = $this->insert( $table, $rows, $fname, [ 'IGNORE' ] ) && $ok;
+			$affectedRowCount += $this->affectedRows();
 		} catch ( Exception $e ) {
 			if ( $useTrx ) {
 				$this->rollback( $fname, self::FLUSHING_INTERNAL );
@@ -2369,6 +2373,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		if ( $useTrx ) {
 			$this->commit( $fname, self::FLUSHING_INTERNAL );
 		}
+		$this->affectedRowCount = $affectedRowCount;
 
 		return $ok;
 	}
@@ -3186,6 +3191,17 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			return $this->timestamp( $ts );
 		}
 	}
+
+	public function affectedRows() {
+		return ( $this->affectedRowCount === null )
+			? $this->fetchAffectedRowCount() // default to driver value
+			: $this->affectedRowCount;
+	}
+
+	/**
+	 * @return int Number of retrieved rows according to the driver
+	 */
+	abstract protected function fetchAffectedRowCount();
 
 	/**
 	 * Take the result from a query, and wrap it in a ResultWrapper if
