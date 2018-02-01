@@ -1,5 +1,18 @@
 <?php
 
+require_once "$IP/extensions/LdapAuthentication/LdapAuthentication.php";
+
+if ( !isset( $bsgLDAPLocalUsers ) ) {
+        $bsgLDAPLocalUsers[] = 'WikiSysop';
+}
+if ( isset( $_POST['wpName'] ) && in_array( $_POST['wpName'], $bsgLDAPLocalUsers ) ) {
+        return;
+}
+elseif ( PHP_SAPI == 'cli' ) {
+        return;
+}
+
+
 $wgGroupPermissions["Domain Admins"]["userrights"] = true;
 $wgGroupPermissions["Domain Admins"]["statistics"] = true;
 
@@ -116,8 +129,6 @@ $wgGroupPermissions['Domain Admins']['rating-viewspecialpage'] = true;
 //preferences
 //skin
 //export
-
-require_once "$IP/extensions/LdapAuthentication/LdapAuthentication.php";
 
 $wgAuth = new LdapAuthenticationPlugin();
 
