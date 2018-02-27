@@ -203,9 +203,9 @@ class BitmapHandler extends TransformationalImageHandler {
 				'-layers', 'merge',
 				'-background', 'white',
 			];
-			MediaWiki\suppressWarnings();
+			Wikimedia\suppressWarnings();
 			$xcfMeta = unserialize( $image->getMetadata() );
-			MediaWiki\restoreWarnings();
+			Wikimedia\restoreWarnings();
 			if ( $xcfMeta
 				&& isset( $xcfMeta['colorType'] )
 				&& $xcfMeta['colorType'] === 'greyscale-alpha'
@@ -436,6 +436,14 @@ class BitmapHandler extends TransformationalImageHandler {
 			$err = "File seems to be missing: {$params['srcPath']}";
 			wfDebug( "$err\n" );
 			$errMsg = wfMessage( 'thumbnail_image-missing', $params['srcPath'] )->text();
+
+			return $this->getMediaTransformError( $params, $errMsg );
+		}
+
+		if ( filesize( $params['srcPath'] ) === 0 ) {
+			$err = "Image file size seems to be zero.";
+			wfDebug( "$err\n" );
+			$errMsg = wfMessage( 'thumbnail_image-size-zero', $params['srcPath'] )->text();
 
 			return $this->getMediaTransformError( $params, $errMsg );
 		}

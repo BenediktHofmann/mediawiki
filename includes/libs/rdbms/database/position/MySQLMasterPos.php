@@ -3,6 +3,7 @@
 namespace Wikimedia\Rdbms;
 
 use InvalidArgumentException;
+use UnexpectedValueException;
 
 /**
  * DBMasterPos class for MySQL/MariaDB
@@ -13,9 +14,9 @@ use InvalidArgumentException;
  *    that GTID sets are complete (e.g. include all domains on the server).
  */
 class MySQLMasterPos implements DBMasterPos {
-	/** @var string Binlog file */
-	public $file;
-	/** @var int Binglog file position */
+	/** @var string|null Binlog file base name */
+	public $binlog;
+	/** @var int[]|null Binglog file position tuple */
 	public $pos;
 	/** @var string[] GTID list */
 	public $gtids = [];
@@ -23,29 +24,43 @@ class MySQLMasterPos implements DBMasterPos {
 	public $asOfTime = 0.0;
 
 	/**
-	 * @param string $file Binlog file name
-	 * @param int $pos Binlog position
-	 * @param string $gtid Comma separated GTID set [optional]
+	 * @param string $position One of (comma separated GTID list, <binlog file>/<integer>)
+	 * @param float $asOfTime UNIX timestamp
 	 */
-	function __construct( $file, $pos, $gtid = '' ) {
-		$this->file = $file;
-		$this->pos = $pos;
-		$this->gtids = array_map( 'trim', explode( ',', $gtid ) );
-		$this->asOfTime = microtime( true );
+	public function __construct( $position, $asOfTime ) {
+		$this->init( $position, $asOfTime );
 	}
 
 	/**
-	 * @return string <binlog file>/<position>, e.g db1034-bin.000976/843431247
+	 * @param string $position
+	 * @param float $asOfTime
 	 */
-	function __toString() {
-		return "{$this->file}/{$this->pos}";
+	protected function init( $position, $asOfTime ) {
+		$m = [];
+		if ( preg_match( '!^(.+)\.(\d+)/(\d+)$!', $position, $m ) ) {
+			$this->binlog = $m[1]; // ideally something like host name
+			$this->pos = [ (int)$m[2], (int)$m[3] ];
+		} else {
+			$gtids = array_filter( array_map( 'trim', explode( ',', $position ) ) );
+			foreach ( $gtids as $gtid ) {
+				if ( !self::parseGTID( $gtid ) ) {
+					throw new InvalidArgumentException( "Invalid GTID '$gtid'." );
+				}
+				$this->gtids[] = $gtid;
+			}
+			if ( !$this->gtids ) {
+				throw new InvalidArgumentException( "Got empty GTID set." );
+			}
+		}
+
+		$this->asOfTime = $asOfTime;
 	}
 
-	function asOfTime() {
+	public function asOfTime() {
 		return $this->asOfTime;
 	}
 
-	function hasReached( DBMasterPos $pos ) {
+	public function hasReached( DBMasterPos $pos ) {
 		if ( !( $pos instanceof self ) ) {
 			throw new InvalidArgumentException( "Position not an instance of " . __CLASS__ );
 		}
@@ -54,14 +69,18 @@ class MySQLMasterPos implements DBMasterPos {
 		$thisPosByDomain = $this->getGtidCoordinates();
 		$thatPosByDomain = $pos->getGtidCoordinates();
 		if ( $thisPosByDomain && $thatPosByDomain ) {
-			$reached = true;
-			// Check that this has positions GTE all of those in $pos for all domains in $pos
+			$comparisons = [];
+			// Check that this has positions reaching those in $pos for all domains in common
 			foreach ( $thatPosByDomain as $domain => $thatPos ) {
-				$thisPos = isset( $thisPosByDomain[$domain] ) ? $thisPosByDomain[$domain] : -1;
-				$reached = $reached && ( $thatPos <= $thisPos );
+				if ( isset( $thisPosByDomain[$domain] ) ) {
+					$comparisons[] = ( $thatPos <= $thisPosByDomain[$domain] );
+				}
 			}
-
-			return $reached;
+			// Check that $this has a GTID for at least one domain also in $pos; due to MariaDB
+			// quirks, prior master switch-overs may result in inactive garbage GTIDs that cannot
+			// be cleaned up. Assume that the domains in both this and $pos cover the relevant
+			// active channels.
+			return ( $comparisons && !in_array( false, $comparisons, true ) );
 		}
 
 		// Fallback to the binlog file comparisons
@@ -75,7 +94,7 @@ class MySQLMasterPos implements DBMasterPos {
 		return false;
 	}
 
-	function channelsMatch( DBMasterPos $pos ) {
+	public function channelsMatch( DBMasterPos $pos ) {
 		if ( !( $pos instanceof self ) ) {
 			throw new InvalidArgumentException( "Position not an instance of " . __CLASS__ );
 		}
@@ -84,8 +103,11 @@ class MySQLMasterPos implements DBMasterPos {
 		$thisPosDomains = array_keys( $this->getGtidCoordinates() );
 		$thatPosDomains = array_keys( $pos->getGtidCoordinates() );
 		if ( $thisPosDomains && $thatPosDomains ) {
-			// Check that this has GTIDs for all domains in $pos
-			return !array_diff( $thatPosDomains, $thisPosDomains );
+			// Check that $this has a GTID for at least one domain also in $pos; due to MariaDB
+			// quirks, prior master switch-overs may result in inactive garbage GTIDs that cannot
+			// easily be cleaned up. Assume that the domains in both this and $pos cover the
+			// relevant active channels.
+			return array_intersect( $thatPosDomains, $thisPosDomains ) ? true : false;
 		}
 
 		// Fallback to the binlog file comparisons
@@ -96,29 +118,77 @@ class MySQLMasterPos implements DBMasterPos {
 	}
 
 	/**
-	 * @note: this returns false for multi-source replication GTID sets
+	 * @return string|null
+	 */
+	public function getLogFile() {
+		return $this->gtids ? null : "{$this->binlog}.{$this->pos[0]}";
+	}
+
+	/**
+	 * @return string[]
+	 */
+	public function getGTIDs() {
+		return $this->gtids;
+	}
+
+	/**
+	 * @return string GTID set or <binlog file>/<position> (e.g db1034-bin.000976/843431247)
+	 */
+	public function __toString() {
+		return $this->gtids
+			? implode( ',', $this->gtids )
+			: $this->getLogFile() . "/{$this->pos[1]}";
+	}
+
+	/**
+	 * @param MySQLMasterPos $pos
+	 * @param MySQLMasterPos $refPos
+	 * @return string[] List of GTIDs from $pos that have domains in $refPos
+	 */
+	public static function getCommonDomainGTIDs( MySQLMasterPos $pos, MySQLMasterPos $refPos ) {
+		$gtidsCommon = [];
+
+		$relevantDomains = $refPos->getGtidCoordinates(); // (domain => unused)
+		foreach ( $pos->gtids as $gtid ) {
+			list( $domain ) = self::parseGTID( $gtid );
+			if ( isset( $relevantDomains[$domain] ) ) {
+				$gtidsCommon[] = $gtid;
+			}
+		}
+
+		return $gtidsCommon;
+	}
+
+	/**
 	 * @see https://mariadb.com/kb/en/mariadb/gtid
 	 * @see https://dev.mysql.com/doc/refman/5.6/en/replication-gtids-concepts.html
-	 * @return array Map of (domain => integer position) or false
+	 * @return array Map of (domain => integer position); possibly empty
 	 */
 	protected function getGtidCoordinates() {
 		$gtidInfos = [];
 		foreach ( $this->gtids as $gtid ) {
-			$m = [];
-			// MariaDB style: <domain>-<server id>-<sequence number>
-			if ( preg_match( '!^(\d+)-\d+-(\d+)$!', $gtid, $m ) ) {
-				$gtidInfos[(int)$m[1]] = (int)$m[2];
-				// MySQL style: <UUID domain>:<sequence number>
-			} elseif ( preg_match( '!^(\w{8}-\w{4}-\w{4}-\w{4}-\w{12}):(\d+)$!', $gtid, $m ) ) {
-				$gtidInfos[$m[1]] = (int)$m[2];
-			} else {
-				$gtidInfos = [];
-				break; // unrecognized GTID
-			}
-
+			list( $domain, $pos ) = self::parseGTID( $gtid );
+			$gtidInfos[$domain] = $pos;
 		}
 
 		return $gtidInfos;
+	}
+
+	/**
+	 * @param string $gtid
+	 * @return array|null [domain, integer position] or null
+	 */
+	protected static function parseGTID( $gtid ) {
+		$m = [];
+		if ( preg_match( '!^(\d+)-\d+-(\d+)$!', $gtid, $m ) ) {
+			// MariaDB style: <domain>-<server id>-<sequence number>
+			return [ (int)$m[1], (int)$m[2] ];
+		} elseif ( preg_match( '!^(\w{8}-\w{4}-\w{4}-\w{4}-\w{12}):(\d+)$!', $gtid, $m ) ) {
+			// MySQL style: <UUID domain>:<sequence number>
+			return [ $m[1], (int)$m[2] ];
+		}
+
+		return null;
 	}
 
 	/**
@@ -127,11 +197,21 @@ class MySQLMasterPos implements DBMasterPos {
 	 * @return array|bool (binlog, (integer file number, integer position)) or false
 	 */
 	protected function getBinlogCoordinates() {
-		$m = [];
-		if ( preg_match( '!^(.+)\.(\d+)/(\d+)$!', (string)$this, $m ) ) {
-			return [ 'binlog' => $m[1], 'pos' => [ (int)$m[2], (int)$m[3] ] ];
+		return ( $this->binlog !== null && $this->pos !== null )
+			? [ 'binlog' => $this->binlog, 'pos' => $this->pos ]
+			: false;
+	}
+
+	public function serialize() {
+		return serialize( [ 'position' => $this->__toString(), 'asOfTime' => $this->asOfTime ] );
+	}
+
+	public function unserialize( $serialized ) {
+		$data = unserialize( $serialized );
+		if ( !is_array( $data ) ) {
+			throw new UnexpectedValueException( __METHOD__ . ": cannot unserialize position" );
 		}
 
-		return false;
+		$this->init( $data['position'], $data['asOfTime'] );
 	}
 }

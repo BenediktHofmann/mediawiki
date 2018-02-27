@@ -49,7 +49,7 @@ abstract class MWHttpRequest implements LoggerAwareInterface {
 	protected $reqHeaders = [];
 	protected $url;
 	protected $parsedUrl;
-	/** @var callable  */
+	/** @var callable */
 	protected $callback;
 	protected $maxRedirects = 5;
 	protected $followRedirects = false;
@@ -79,7 +79,7 @@ abstract class MWHttpRequest implements LoggerAwareInterface {
 	protected $profileName;
 
 	/**
-	 * @var LoggerInterface;
+	 * @var LoggerInterface
 	 */
 	protected $logger;
 
@@ -175,13 +175,16 @@ abstract class MWHttpRequest implements LoggerAwareInterface {
 	 * Generate a new request object
 	 * Deprecated: @see HttpRequestFactory::create
 	 * @param string $url Url to use
-	 * @param array $options (optional) extra params to pass (see Http::request())
+	 * @param array|null $options (optional) extra params to pass (see Http::request())
 	 * @param string $caller The method making this request, for profiling
 	 * @throws DomainException
 	 * @return MWHttpRequest
 	 * @see MWHttpRequest::__construct
 	 */
-	public static function factory( $url, $options = null, $caller = __METHOD__ ) {
+	public static function factory( $url, array $options = null, $caller = __METHOD__ ) {
+		if ( $options === null ) {
+			$options = [];
+		}
 		return \MediaWiki\MediaWikiServices::getInstance()
 			->getHttpRequestFactory()
 			->create( $url, $options, $caller );

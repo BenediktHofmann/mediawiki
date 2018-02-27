@@ -238,30 +238,6 @@ class EditPage {
 	/** @var bool */
 	public $isConflict = false;
 
-	/**
-	 * @deprecated since 1.30 use Title::isCssJsSubpage()
-	 * @var bool
-	 */
-	public $isCssJsSubpage = false;
-
-	/**
-	 * @deprecated since 1.30 use Title::isCssSubpage()
-	 * @var bool
-	 */
-	public $isCssSubpage = false;
-
-	/**
-	 * @deprecated since 1.30 use Title::isJsSubpage()
-	 * @var bool
-	 */
-	public $isJsSubpage = false;
-
-	/**
-	 * @deprecated since 1.30
-	 * @var bool
-	 */
-	public $isWrongCaseCssJsPage = false;
-
 	/** @var bool New page or new section */
 	public $isNew = false;
 
@@ -325,7 +301,7 @@ class EditPage {
 	/** @var bool Has a summary been preset using GET parameter &summary= ? */
 	public $hasPresetSummary = false;
 
-	/** @var Revision|bool */
+	/** @var Revision|bool|null */
 	public $mBaseRevision = false;
 
 	/** @var bool */
@@ -660,13 +636,6 @@ class EditPage {
 		}
 
 		$this->isConflict = false;
-		// css / js subpages of user pages get a special treatment
-		// The following member variables are deprecated since 1.30,
-		// the functions should be used instead.
-		$this->isCssJsSubpage = $this->mTitle->isCssJsSubpage();
-		$this->isCssSubpage = $this->mTitle->isCssSubpage();
-		$this->isJsSubpage = $this->mTitle->isJsSubpage();
-		$this->isWrongCaseCssJsPage = $this->isWrongCaseCssJsPage();
 
 		# Show applicable editing introductions
 		if ( $this->formtype == 'initial' || $this->firsttime ) {
@@ -877,9 +846,9 @@ class EditPage {
 	 *
 	 * @return bool
 	 */
-	protected function isWrongCaseCssJsPage() {
-		if ( $this->mTitle->isCssJsSubpage() ) {
-			$name = $this->mTitle->getSkinFromCssJsSubpage();
+	protected function isWrongCaseUserConfigPage() {
+		if ( $this->mTitle->isUserConfigPage() ) {
+			$name = $this->mTitle->getSkinFromConfigSubpage();
 			$skins = array_merge(
 				array_keys( Skin::getSkinNames() ),
 				[ 'common' ]
@@ -2369,7 +2338,7 @@ ERROR;
 	/**
 	 * @note: this method is very poorly named. If the user opened the form with ?oldid=X,
 	 *        one might think of X as the "base revision", which is NOT what this returns.
-	 * @return Revision Current version when the edit was started
+	 * @return Revision|null Current version when the edit was started
 	 */
 	public function getBaseRevision() {
 		if ( !$this->mBaseRevision ) {
@@ -2798,7 +2767,8 @@ ERROR;
 
 		if ( $this->wasDeletedSinceLastEdit() && 'save' == $this->formtype ) {
 			$username = $this->lastDelete->user_name;
-			$comment = CommentStore::newKey( 'log_comment' )->getComment( $this->lastDelete )->text;
+			$comment = CommentStore::getStore()
+				->getComment( 'log_comment', $this->lastDelete )->text;
 
 			// It is better to not parse the comment at all than to have templates expanded in the middle
 			// TODO: can the checkLabel be moved outside of the div so that wrapWikiMsg could be used?
@@ -2878,7 +2848,7 @@ ERROR;
 			$out->addHTML( $editConflictHelper->getEditFormHtmlBeforeContent() );
 		}
 
-		if ( !$this->mTitle->isCssJsSubpage() && $showToolbar && $user->getOption( 'showtoolbar' ) ) {
+		if ( !$this->mTitle->isUserConfigPage() && $showToolbar && $user->getOption( 'showtoolbar' ) ) {
 			$out->addHTML( self::getEditToolbar( $this->mTitle ) );
 		}
 
@@ -3115,22 +3085,26 @@ ERROR;
 				);
 			}
 		} else {
-			if ( $this->mTitle->isCssJsSubpage() ) {
+			if ( $this->mTitle->isUserConfigPage() ) {
 				# Check the skin exists
-				if ( $this->isWrongCaseCssJsPage() ) {
+				if ( $this->isWrongCaseUserConfigPage() ) {
 					$out->wrapWikiMsg(
-						"<div class='error' id='mw-userinvalidcssjstitle'>\n$1\n</div>",
-						[ 'userinvalidcssjstitle', $this->mTitle->getSkinFromCssJsSubpage() ]
+						"<div class='error' id='mw-userinvalidconfigtitle'>\n$1\n</div>",
+						[ 'userinvalidconfigtitle', $this->mTitle->getSkinFromConfigSubpage() ]
 					);
 				}
 				if ( $this->getTitle()->isSubpageOf( $user->getUserPage() ) ) {
-					$isCssSubpage = $this->mTitle->isCssSubpage();
-					$out->wrapWikiMsg( '<div class="mw-usercssjspublic">$1</div>',
-						$isCssSubpage ? 'usercssispublic' : 'userjsispublic'
-					);
+					$isUserCssConfig = $this->mTitle->isUserCssConfigPage();
+
+					$warning = $isUserCssConfig
+						? 'usercssispublic'
+						: 'userjsispublic';
+
+					$out->wrapWikiMsg( '<div class="mw-userconfigpublic">$1</div>', $warning );
+
 					if ( $this->formtype !== 'preview' ) {
 						$config = $this->context->getConfig();
-						if ( $isCssSubpage && $config->get( 'AllowUserCss' ) ) {
+						if ( $isUserCssConfig && $config->get( 'AllowUserCss' ) ) {
 							$out->wrapWikiMsg(
 								"<div id='mw-usercssyoucanpreview'>\n$1\n</div>",
 								[ 'usercssyoucanpreview' ]
@@ -3164,11 +3138,15 @@ ERROR;
 	 * @return array
 	 */
 	private function getSummaryInputAttributes( array $inputAttrs = null ) {
-		// Note: the maxlength is overridden in JS to 255 and to make it use UTF-8 bytes, not characters.
+		$conf = $this->context->getConfig();
+		$oldCommentSchema = $conf->get( 'CommentTableSchemaMigrationStage' ) === MIGRATION_OLD;
+		// HTML maxlength uses "UTF-16 code units", which means that characters outside BMP
+		// (e.g. emojis) count for two each. This limit is overridden in JS to instead count
+		// Unicode codepoints (or 255 UTF-8 bytes for old schema).
 		return ( is_array( $inputAttrs ) ? $inputAttrs : [] ) + [
 			'id' => 'wpSummary',
 			'name' => 'wpSummary',
-			'maxlength' => '200',
+			'maxlength' => $oldCommentSchema ? 200 : CommentStore::COMMENT_CHARACTER_LIMIT,
 			'tabindex' => 1,
 			'size' => 60,
 			'spellcheck' => 'true',
@@ -3701,7 +3679,7 @@ ERROR;
 		$out->addHTML( $this->editFormTextAfterWarn );
 
 		$out->addHTML( "<div class='editButtons'>\n" );
-		$out->addHTML( implode( $this->getEditButtons( $tabindex ), "\n" ) . "\n" );
+		$out->addHTML( implode( "\n", $this->getEditButtons( $tabindex ) ) . "\n" );
 
 		$cancel = $this->getCancelLink();
 
@@ -3810,31 +3788,31 @@ ERROR;
 	 */
 	protected function getLastDelete() {
 		$dbr = wfGetDB( DB_REPLICA );
-		$commentQuery = CommentStore::newKey( 'log_comment' )->getJoin();
+		$commentQuery = CommentStore::getStore()->getJoin( 'log_comment' );
+		$actorQuery = ActorMigration::newMigration()->getJoin( 'log_user' );
 		$data = $dbr->selectRow(
-			[ 'logging', 'user' ] + $commentQuery['tables'],
+			array_merge( [ 'logging' ], $commentQuery['tables'], $actorQuery['tables'], [ 'user' ] ),
 			[
 				'log_type',
 				'log_action',
 				'log_timestamp',
-				'log_user',
 				'log_namespace',
 				'log_title',
 				'log_params',
 				'log_deleted',
 				'user_name'
-			] + $commentQuery['fields'], [
+			] + $commentQuery['fields'] + $actorQuery['fields'],
+			[
 				'log_namespace' => $this->mTitle->getNamespace(),
 				'log_title' => $this->mTitle->getDBkey(),
 				'log_type' => 'delete',
 				'log_action' => 'delete',
-				'user_id=log_user'
 			],
 			__METHOD__,
 			[ 'LIMIT' => 1, 'ORDER BY' => 'log_timestamp DESC' ],
 			[
-				'user' => [ 'JOIN', 'user_id=log_user' ],
-			] + $commentQuery['joins']
+				'user' => [ 'JOIN', 'user_id=' . $actorQuery['fields']['log_user'] ],
+			] + $commentQuery['joins'] + $actorQuery['joins']
 		);
 		// Quick paranoid permission checks...
 		if ( is_object( $data ) ) {
@@ -3912,10 +3890,10 @@ ERROR;
 			}
 
 			# don't parse non-wikitext pages, show message about preview
-			if ( $this->mTitle->isCssJsSubpage() || $this->mTitle->isCssOrJsPage() ) {
-				if ( $this->mTitle->isCssJsSubpage() ) {
+			if ( $this->mTitle->isUserConfigPage() || $this->mTitle->isSiteConfigPage() ) {
+				if ( $this->mTitle->isUserConfigPage() ) {
 					$level = 'user';
-				} elseif ( $this->mTitle->isCssOrJsPage() ) {
+				} elseif ( $this->mTitle->isSiteConfigPage() ) {
 					$level = 'site';
 				} else {
 					$level = false;
@@ -4027,7 +4005,6 @@ ERROR;
 			$this->mTitle, $pstContent, $user );
 		$parserOutput = $pstContent->getParserOutput( $this->mTitle, null, $parserOptions );
 		ScopedCallback::consume( $scopedCallback );
-		$parserOutput->setEditSectionTokens( false ); // no section edit links
 		return [
 			'parserOutput' => $parserOutput,
 			'html' => $parserOutput->getText( [

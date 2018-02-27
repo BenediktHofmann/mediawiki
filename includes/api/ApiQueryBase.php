@@ -255,7 +255,7 @@ abstract class ApiQueryBase extends ApiBase {
 	/**
 	 * Equivalent to addWhere(array($field => $value))
 	 * @param string $field Field name
-	 * @param string|string[] $value Value; ignored if null or empty array;
+	 * @param string|string[] $value Value; ignored if null or empty array
 	 */
 	protected function addWhereFld( $field, $value ) {
 		if ( $value !== null && !( is_array( $value ) && !$value ) ) {
@@ -446,12 +446,14 @@ abstract class ApiQueryBase extends ApiBase {
 		if ( $showBlockInfo ) {
 			$this->addFields( [
 				'ipb_id',
-				'ipb_by',
-				'ipb_by_text',
 				'ipb_expiry',
 				'ipb_timestamp'
 			] );
-			$commentQuery = CommentStore::newKey( 'ipb_reason' )->getJoin();
+			$actorQuery = ActorMigration::newMigration()->getJoin( 'ipb_by' );
+			$this->addTables( $actorQuery['tables'] );
+			$this->addFields( $actorQuery['fields'] );
+			$this->addJoinConds( $actorQuery['joins'] );
+			$commentQuery = CommentStore::getStore()->getJoin( 'ipb_reason' );
 			$this->addTables( $commentQuery['tables'] );
 			$this->addFields( $commentQuery['fields'] );
 			$this->addJoinConds( $commentQuery['joins'] );

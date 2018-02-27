@@ -24,7 +24,7 @@ namespace Wikimedia\Rdbms;
 
 use DateTime;
 use DateTimeZone;
-use MediaWiki;
+use Wikimedia;
 use InvalidArgumentException;
 use Exception;
 use stdClass;
@@ -60,6 +60,8 @@ abstract class DatabaseMysqlBase extends Database {
 	protected $sqlMode;
 	/** @var bool Use experimental UTF-8 transmission encoding */
 	protected $utf8Mode;
+	/** @var bool|null */
+	protected $defaultBigSelects = null;
 
 	/** @var string|null */
 	private $serverVersion = null;
@@ -126,14 +128,14 @@ abstract class DatabaseMysqlBase extends Database {
 		# Close/unset connection handle
 		$this->close();
 
-		$this->mServer = $server;
-		$this->mUser = $user;
-		$this->mPassword = $password;
-		$this->mDBname = $dbName;
+		$this->server = $server;
+		$this->user = $user;
+		$this->password = $password;
+		$this->dbName = $dbName;
 
 		$this->installErrorHandler();
 		try {
-			$this->mConn = $this->mysqlConnect( $this->mServer );
+			$this->conn = $this->mysqlConnect( $this->server );
 		} catch ( Exception $ex ) {
 			$this->restoreErrorHandler();
 			throw $ex;
@@ -141,7 +143,7 @@ abstract class DatabaseMysqlBase extends Database {
 		$error = $this->restoreErrorHandler();
 
 		# Always log connection errors
-		if ( !$this->mConn ) {
+		if ( !$this->conn ) {
 			if ( !$error ) {
 				$error = $this->lastError();
 			}
@@ -159,10 +161,10 @@ abstract class DatabaseMysqlBase extends Database {
 			$this->reportConnectionError( $error );
 		}
 
-		if ( $dbName != '' ) {
-			MediaWiki\suppressWarnings();
+		if ( strlen( $dbName ) ) {
+			Wikimedia\suppressWarnings();
 			$success = $this->selectDB( $dbName );
-			MediaWiki\restoreWarnings();
+			Wikimedia\restoreWarnings();
 			if ( !$success ) {
 				$this->queryLogger->error(
 					"Error selecting database {db_name} on server {db_server}",
@@ -171,7 +173,7 @@ abstract class DatabaseMysqlBase extends Database {
 					] )
 				);
 				$this->queryLogger->debug(
-					"Error selecting database $dbName on server {$this->mServer}" );
+					"Error selecting database $dbName on server {$this->server}" );
 
 				$this->reportConnectionError( "Error selecting database $dbName" );
 			}
@@ -190,7 +192,7 @@ abstract class DatabaseMysqlBase extends Database {
 		}
 		// Set any custom settings defined by site config
 		// (e.g. https://dev.mysql.com/doc/refman/4.1/en/innodb-parameters.html)
-		foreach ( $this->mSessionVars as $var => $val ) {
+		foreach ( $this->sessionVars as $var => $val ) {
 			// Escape strings but not numbers to avoid MySQL complaining
 			if ( !is_int( $val ) && !is_float( $val ) ) {
 				$val = $this->addQuotes( $val );
@@ -213,7 +215,7 @@ abstract class DatabaseMysqlBase extends Database {
 			}
 		}
 
-		$this->mOpened = true;
+		$this->opened = true;
 
 		return true;
 	}
@@ -257,9 +259,9 @@ abstract class DatabaseMysqlBase extends Database {
 		if ( $res instanceof ResultWrapper ) {
 			$res = $res->result;
 		}
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		$ok = $this->mysqlFreeResult( $res );
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 		if ( !$ok ) {
 			throw new DBUnexpectedError( $this, "Unable to free MySQL result" );
 		}
@@ -282,9 +284,9 @@ abstract class DatabaseMysqlBase extends Database {
 		if ( $res instanceof ResultWrapper ) {
 			$res = $res->result;
 		}
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		$row = $this->mysqlFetchObject( $res );
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 
 		$errno = $this->lastErrno();
 		// Unfortunately, mysql_fetch_object does not reset the last errno.
@@ -318,9 +320,9 @@ abstract class DatabaseMysqlBase extends Database {
 		if ( $res instanceof ResultWrapper ) {
 			$res = $res->result;
 		}
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		$row = $this->mysqlFetchArray( $res );
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 
 		$errno = $this->lastErrno();
 		// Unfortunately, mysql_fetch_array does not reset the last errno.
@@ -354,9 +356,9 @@ abstract class DatabaseMysqlBase extends Database {
 		if ( $res instanceof ResultWrapper ) {
 			$res = $res->result;
 		}
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		$n = $this->mysqlNumRows( $res );
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 
 		// Unfortunately, mysql_num_rows does not reset the last errno.
 		// We are not checking for any errors here, since
@@ -465,19 +467,19 @@ abstract class DatabaseMysqlBase extends Database {
 	 * @return string
 	 */
 	public function lastError() {
-		if ( $this->mConn ) {
+		if ( $this->conn ) {
 			# Even if it's non-zero, it can still be invalid
-			MediaWiki\suppressWarnings();
-			$error = $this->mysqlError( $this->mConn );
+			Wikimedia\suppressWarnings();
+			$error = $this->mysqlError( $this->conn );
 			if ( !$error ) {
 				$error = $this->mysqlError();
 			}
-			MediaWiki\restoreWarnings();
+			Wikimedia\restoreWarnings();
 		} else {
 			$error = $this->mysqlError();
 		}
 		if ( $error ) {
-			$error .= ' (' . $this->mServer . ')';
+			$error .= ' (' . $this->server . ')';
 		}
 
 		return $error;
@@ -594,7 +596,7 @@ abstract class DatabaseMysqlBase extends Database {
 		list( $database, , $prefix, $table ) = $this->qualifiedTableComponents( $table );
 		$tableName = "{$prefix}{$table}";
 
-		if ( isset( $this->mSessionTempTables[$tableName] ) ) {
+		if ( isset( $this->sessionTempTables[$tableName] ) ) {
 			return true; // already known to exist and won't show in SHOW TABLES anyway
 		}
 
@@ -889,17 +891,21 @@ abstract class DatabaseMysqlBase extends Database {
 			return 0; // already reached this point for sure
 		}
 
-		$useGTID = ( $this->useGTIDs && $pos->gtids );
-
 		// Call doQuery() directly, to avoid opening a transaction if DBO_TRX is set
-		if ( $useGTID ) {
+		if ( $pos->getGTIDs() ) {
+			// Ignore GTIDs from domains exclusive to the master DB (presumably inactive)
+			$rpos = $this->getReplicaPos();
+			$gtidsWait = $rpos ? MySQLMasterPos::getCommonDomainGTIDs( $pos, $rpos ) : [];
+			if ( !$gtidsWait ) {
+				return -1; // $pos is from the wrong cluster?
+			}
 			// Wait on the GTID set (MariaDB only)
-			$gtidArg = $this->addQuotes( implode( ',', $pos->gtids ) );
+			$gtidArg = $this->addQuotes( implode( ',', $gtidsWait ) );
 			$res = $this->doQuery( "SELECT MASTER_GTID_WAIT($gtidArg, $timeout)" );
 		} else {
 			// Wait on the binlog coordinates
-			$encFile = $this->addQuotes( $pos->file );
-			$encPos = intval( $pos->pos );
+			$encFile = $this->addQuotes( $pos->getLogFile() );
+			$encPos = intval( $pos->pos[1] );
 			$res = $this->doQuery( "SELECT MASTER_POS_WAIT($encFile, $encPos, $timeout)" );
 		}
 
@@ -912,7 +918,7 @@ abstract class DatabaseMysqlBase extends Database {
 		// Result can be NULL (error), -1 (timeout), or 0+ per the MySQL manual
 		$status = ( $row[0] !== null ) ? intval( $row[0] ) : null;
 		if ( $status === null ) {
-			if ( !$useGTID ) {
+			if ( !$pos->getGTIDs() ) {
 				// T126436: jobs programmed to wait on master positions might be referencing
 				// binlogs with an old master hostname; this makes MASTER_POS_WAIT() return null.
 				// Try to detect this case and treat the replica DB as having reached the given
@@ -938,26 +944,26 @@ abstract class DatabaseMysqlBase extends Database {
 	 * @return MySQLMasterPos|bool
 	 */
 	public function getReplicaPos() {
+		$now = microtime( true );
+
+		if ( $this->useGTIDs ) {
+			$res = $this->query( "SELECT @@global.gtid_slave_pos AS Value", __METHOD__ );
+			$gtidRow = $this->fetchObject( $res );
+			if ( $gtidRow && strlen( $gtidRow->Value ) ) {
+				return new MySQLMasterPos( $gtidRow->Value, $now );
+			}
+		}
+
 		$res = $this->query( 'SHOW SLAVE STATUS', __METHOD__ );
 		$row = $this->fetchObject( $res );
-
-		if ( $row ) {
-			$pos = isset( $row->Exec_master_log_pos )
-				? $row->Exec_master_log_pos
-				: $row->Exec_Master_Log_Pos;
-			// Also fetch the last-applied GTID set (MariaDB)
-			if ( $this->useGTIDs ) {
-				$res = $this->query( "SHOW GLOBAL VARIABLES LIKE 'gtid_slave_pos'", __METHOD__ );
-				$gtidRow = $this->fetchObject( $res );
-				$gtidSet = $gtidRow ? $gtidRow->Value : '';
-			} else {
-				$gtidSet = '';
-			}
-
-			return new MySQLMasterPos( $row->Relay_Master_Log_File, $pos, $gtidSet );
-		} else {
-			return false;
+		if ( $row && strlen( $row->Relay_Master_Log_File ) ) {
+			return new MySQLMasterPos(
+				"{$row->Relay_Master_Log_File}/{$row->Exec_Master_Log_Pos}",
+				$now
+			);
 		}
+
+		return false;
 	}
 
 	/**
@@ -966,23 +972,23 @@ abstract class DatabaseMysqlBase extends Database {
 	 * @return MySQLMasterPos|bool
 	 */
 	public function getMasterPos() {
+		$now = microtime( true );
+
+		if ( $this->useGTIDs ) {
+			$res = $this->query( "SELECT @@global.gtid_binlog_pos AS Value", __METHOD__ );
+			$gtidRow = $this->fetchObject( $res );
+			if ( $gtidRow && strlen( $gtidRow->Value ) ) {
+				return new MySQLMasterPos( $gtidRow->Value, $now );
+			}
+		}
+
 		$res = $this->query( 'SHOW MASTER STATUS', __METHOD__ );
 		$row = $this->fetchObject( $res );
-
-		if ( $row ) {
-			// Also fetch the last-written GTID set (MariaDB)
-			if ( $this->useGTIDs ) {
-				$res = $this->query( "SHOW GLOBAL VARIABLES LIKE 'gtid_binlog_pos'", __METHOD__ );
-				$gtidRow = $this->fetchObject( $res );
-				$gtidSet = $gtidRow ? $gtidRow->Value : '';
-			} else {
-				$gtidSet = '';
-			}
-
-			return new MySQLMasterPos( $row->File, $row->Position, $gtidSet );
-		} else {
-			return false;
+		if ( $row && strlen( $row->File ) ) {
+			return new MySQLMasterPos( "{$row->File}/{$row->Position}", $now );
 		}
+
+		return false;
 	}
 
 	public function serverIsReadOnly() {
@@ -1081,6 +1087,10 @@ abstract class DatabaseMysqlBase extends Database {
 	 * @since 1.20
 	 */
 	public function lockIsFree( $lockName, $method ) {
+		if ( !parent::lockIsFree( $lockName, $method ) ) {
+			return false; // already held
+		}
+
 		$encName = $this->addQuotes( $this->makeLockName( $lockName ) );
 		$result = $this->query( "SELECT IS_FREE_LOCK($encName) AS lockstatus", $method );
 		$row = $this->fetchObject( $result );
@@ -1172,14 +1182,14 @@ abstract class DatabaseMysqlBase extends Database {
 	 */
 	public function setBigSelects( $value = true ) {
 		if ( $value === 'default' ) {
-			if ( $this->mDefaultBigSelects === null ) {
+			if ( $this->defaultBigSelects === null ) {
 				# Function hasn't been called before so it must already be set to the default
 				return;
 			} else {
-				$value = $this->mDefaultBigSelects;
+				$value = $this->defaultBigSelects;
 			}
-		} elseif ( $this->mDefaultBigSelects === null ) {
-			$this->mDefaultBigSelects =
+		} elseif ( $this->defaultBigSelects === null ) {
+			$this->defaultBigSelects =
 				(bool)$this->selectField( false, '@@sql_big_selects', '', __METHOD__ );
 		}
 		$encValue = $value ? '1' : '0';
@@ -1378,7 +1388,7 @@ abstract class DatabaseMysqlBase extends Database {
 	 */
 	public function listViews( $prefix = null, $fname = __METHOD__ ) {
 		// The name of the column containing the name of the VIEW
-		$propertyName = 'Tables_in_' . $this->mDBname;
+		$propertyName = 'Tables_in_' . $this->dbName;
 
 		// Query for the VIEWS
 		$res = $this->query( 'SHOW FULL TABLES WHERE TABLE_TYPE = "VIEW"' );
@@ -1446,6 +1456,11 @@ abstract class DatabaseMysqlBase extends Database {
 		} else {
 			return $index;
 		}
+	}
+
+	protected function isTransactableQuery( $sql ) {
+		return parent::isTransactableQuery( $sql ) &&
+			!preg_match( '/^SELECT\s+(GET|RELEASE|IS_FREE)_LOCK\(/', $sql );
 	}
 }
 

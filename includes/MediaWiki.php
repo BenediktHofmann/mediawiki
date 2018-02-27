@@ -549,6 +549,9 @@ class MediaWiki {
 			}
 
 			MWExceptionHandler::handleException( $e );
+		} catch ( Error $e ) {
+			// Type errors and such: at least handle it now and clean up the LBFactory state
+			MWExceptionHandler::handleException( $e );
 		}
 
 		$this->doPostOutputShutdown( 'normal' );
@@ -1028,7 +1031,7 @@ class MediaWiki {
 			$port = $info['port'];
 		}
 
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		$sock = $host ? fsockopen(
 			$host,
 			$port,
@@ -1037,7 +1040,7 @@ class MediaWiki {
 			// If it takes more than 100ms to connect to ourselves there is a problem...
 			0.100
 		) : false;
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 
 		$invokedWithSuccess = true;
 		if ( $sock ) {

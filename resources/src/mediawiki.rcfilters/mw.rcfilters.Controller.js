@@ -1,4 +1,7 @@
 ( function ( mw, $ ) {
+
+	var byteLength = require( 'mediawiki.String' ).byteLength;
+
 	/* eslint no-underscore-dangle: "off" */
 	/**
 	 * Controller for the filters in Recent Changes
@@ -320,6 +323,8 @@
 				info.noResultsDetails = 'NO_RESULTS_TIMEOUT';
 			} else if ( $root.find( '.mw-changeslist-notargetpage' ).length ) {
 				info.noResultsDetails = 'NO_RESULTS_NO_TARGET_PAGE';
+			} else if ( $root.find( '.mw-changeslist-invalidtargetpage' ).length ) {
+				info.noResultsDetails = 'NO_RESULTS_INVALID_TARGET_PAGE';
 			} else {
 				info.noResultsDetails = 'NO_RESULTS_NORMAL';
 			}
@@ -804,7 +809,7 @@
 		// Stringify state
 		stringified = JSON.stringify( state );
 
-		if ( $.byteLength( stringified ) > 65535 ) {
+		if ( byteLength( stringified ) > 65535 ) {
 			// Sanity check, since the preference can only hold that.
 			return;
 		}

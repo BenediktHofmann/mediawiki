@@ -650,13 +650,14 @@ class DifferenceEngine extends ContextSource {
 		}
 	}
 
+	/**
+	 * @param WikiPage $page
+	 * @param Revision $rev
+	 *
+	 * @return ParserOutput|bool False if the revision was not found
+	 */
 	protected function getParserOutput( WikiPage $page, Revision $rev ) {
 		$parserOptions = $page->makeParserOptions( $this->getContext() );
-
-		if ( !$rev->isCurrent() || !$rev->getTitle()->quickUserCan( 'edit', $this->getUser() ) ) {
-			$parserOptions->setEditSection( false );
-		}
-
 		$parserOutput = $page->getParserOutput( $parserOptions, $rev->getId() );
 
 		return $parserOutput;

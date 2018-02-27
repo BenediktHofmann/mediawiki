@@ -104,8 +104,11 @@ abstract class QuickTemplate {
 
 	/**
 	 * @param MediaWikiI18N &$t
+	 * @deprecate since 1.31 Use BaseTemplate::msg() or Skin::msg() instead for setting
+	 *  message parameters.
 	 */
 	public function setTranslator( &$t ) {
+		wfDeprecated( __METHOD__, '1.31' );
 		$this->translator = &$t;
 	}
 
@@ -133,29 +136,29 @@ abstract class QuickTemplate {
 
 	/**
 	 * @private
-	 * @param string $str
+	 * @param string $msgKey
 	 */
-	function msg( $str ) {
-		echo htmlspecialchars( $this->translator->translate( $str ) );
+	function msg( $msgKey ) {
+		echo htmlspecialchars( wfMessage( $msgKey )->text() );
 	}
 
 	/**
 	 * @private
-	 * @param string $str
+	 * @param string $msgKey
 	 */
-	function msgHtml( $str ) {
-		echo $this->translator->translate( $str );
+	function msgHtml( $msgKey ) {
+		echo wfMessage( $msgKey )->text();
 	}
 
 	/**
 	 * An ugly, ugly hack.
 	 * @private
-	 * @param string $str
+	 * @param string $msgKey
 	 */
-	function msgWiki( $str ) {
+	function msgWiki( $msgKey ) {
 		global $wgOut;
 
-		$text = $this->translator->translate( $str );
+		$text = wfMessage( $msgKey )->text();
 		echo $wgOut->parse( $text );
 	}
 
@@ -171,12 +174,12 @@ abstract class QuickTemplate {
 	/**
 	 * @private
 	 *
-	 * @param string $str
+	 * @param string $msgKey
 	 * @return bool
 	 */
-	function haveMsg( $str ) {
-		$msg = $this->translator->translate( $str );
-		return ( $msg != '-' ) && ( $msg != '' ); # ????
+	function haveMsg( $msgKey ) {
+		$msg = wfMessage( $msgKey );
+		return $msg->exists() && !$msg->isDisabled();
 	}
 
 	/**

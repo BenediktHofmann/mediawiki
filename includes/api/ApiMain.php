@@ -593,7 +593,7 @@ class ApiMain extends ApiBase {
 		$this->setCacheMode( 'private' );
 
 		$response = $this->getRequest()->response();
-		$headerStr = 'MediaWiki-API-Error: ' . join( ', ', $errCodes );
+		$headerStr = 'MediaWiki-API-Error: ' . implode( ', ', $errCodes );
 		$response->header( $headerStr );
 
 		// Reset and print just the error message
@@ -1037,7 +1037,7 @@ class ApiMain extends ApiBase {
 			// None of the rest have any messages for non-error types
 		} elseif ( $e instanceof UsageException ) {
 			// User entered incorrect parameters - generate error response
-			$data = MediaWiki\quietCall( [ $e, 'getMessageArray' ] );
+			$data = Wikimedia\quietCall( [ $e, 'getMessageArray' ] );
 			$code = $data['code'];
 			$info = $data['info'];
 			unset( $data['code'], $data['info'] );
@@ -1397,9 +1397,9 @@ class ApiMain extends ApiBase {
 			$this->getRequest()->response()->statusHeader( 304 );
 
 			// Avoid outputting the compressed representation of a zero-length body
-			MediaWiki\suppressWarnings();
+			Wikimedia\suppressWarnings();
 			ini_set( 'zlib.output_compression', 0 );
-			MediaWiki\restoreWarnings();
+			Wikimedia\restoreWarnings();
 			wfClearOutputBuffers();
 
 			return false;

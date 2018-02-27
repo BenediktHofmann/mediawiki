@@ -20,8 +20,15 @@ class ExtensionRegistry {
 
 	/**
 	 * Version of the highest supported manifest version
+	 * Note: Update MANIFEST_VERSION_MW_VERSION when changing this
 	 */
 	const MANIFEST_VERSION = 2;
+
+	/**
+	 * MediaWiki version constraint representing what the current
+	 * highest MANIFEST_VERSION is supported in
+	 */
+	const MANIFEST_VERSION_MW_VERSION = '>= 1.29.0';
 
 	/**
 	 * Version of the oldest supported manifest version
@@ -75,6 +82,7 @@ class ExtensionRegistry {
 	private static $instance;
 
 	/**
+	 * @codeCoverageIgnore
 	 * @return ExtensionRegistry
 	 */
 	public static function getInstance() {
@@ -98,9 +106,11 @@ class ExtensionRegistry {
 			} else {
 				throw new Exception( "$path does not exist!" );
 			}
+			// @codeCoverageIgnoreStart
 			if ( !$mtime ) {
 				$err = error_get_last();
 				throw new Exception( "Couldn't stat $path: {$err['message']}" );
+				// @codeCoverageIgnoreEnd
 			}
 		}
 		$this->queued[$path] = $mtime;
@@ -397,16 +407,6 @@ class ExtensionRegistry {
 	 */
 	public function getAllThings() {
 		return $this->loaded;
-	}
-
-	/**
-	 * Mark a thing as loaded
-	 *
-	 * @param string $name
-	 * @param array $credits
-	 */
-	protected function markLoaded( $name, array $credits ) {
-		$this->loaded[$name] = $credits;
 	}
 
 	/**

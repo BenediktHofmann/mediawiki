@@ -34,6 +34,12 @@ use Wikimedia\Rdbms\IDatabase;
  */
 abstract class ChangesListSpecialPage extends SpecialPage {
 	/**
+	 * Maximum length of a tag description in UTF-8 characters.
+	 * Longer descriptions will be truncated.
+	 */
+	const TAG_DESC_CHARACTER_LIMIT = 120;
+
+	/**
 	 * Preference name for saved queries. Subclasses that use saved queries should override this.
 	 * @var string
 	 */
@@ -115,7 +121,11 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'queryCallable' => function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
 							&$query_options, &$join_conds
 						) {
-							$conds[] = 'rc_user = 0';
+							$actorMigration = ActorMigration::newMigration();
+							$actorQuery = $actorMigration->getJoin( 'rc_user' );
+							$tables += $actorQuery['tables'];
+							$join_conds += $actorQuery['joins'];
+							$conds[] = $actorMigration->isAnon( $actorQuery['fields']['rc_user'] );
 						},
 						'isReplacedInStructuredUi' => true,
 
@@ -129,7 +139,11 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'queryCallable' => function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
 							&$query_options, &$join_conds
 						) {
-							$conds[] = 'rc_user != 0';
+							$actorMigration = ActorMigration::newMigration();
+							$actorQuery = $actorMigration->getJoin( 'rc_user' );
+							$tables += $actorQuery['tables'];
+							$join_conds += $actorQuery['joins'];
+							$conds[] = $actorMigration->isNotAnon( $actorQuery['fields']['rc_user'] );
 						},
 						'isReplacedInStructuredUi' => true,
 					]
@@ -214,8 +228,10 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'queryCallable' => function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
 							&$query_options, &$join_conds
 						) {
-							$user = $ctx->getUser();
-							$conds[] = 'rc_user_text != ' . $dbr->addQuotes( $user->getName() );
+							$actorQuery = ActorMigration::newMigration()->getWhere( $dbr, 'rc_user', $ctx->getUser() );
+							$tables += $actorQuery['tables'];
+							$join_conds += $actorQuery['joins'];
+							$conds[] = 'NOT(' . $actorQuery['conds'] . ')';
 						},
 						'cssClassSuffix' => 'self',
 						'isRowApplicableCallable' => function ( $ctx, $rc ) {
@@ -230,8 +246,11 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'queryCallable' => function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
 							&$query_options, &$join_conds
 						) {
-							$user = $ctx->getUser();
-							$conds[] = 'rc_user_text = ' . $dbr->addQuotes( $user->getName() );
+							$actorQuery = ActorMigration::newMigration()
+								->getWhere( $dbr, 'rc_user', $ctx->getUser(), false );
+							$tables += $actorQuery['tables'];
+							$join_conds += $actorQuery['joins'];
+							$conds[] = $actorQuery['conds'];
 						},
 						'cssClassSuffix' => 'others',
 						'isRowApplicableCallable' => function ( $ctx, $rc ) {
@@ -794,15 +813,15 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						isset( $explicitlyDefinedTags[ $tagName ] ) ||
 						isset( $softwareActivatedTags[ $tagName ] )
 					) {
-						// Parse description
-						$desc = ChangeTags::tagLongDescriptionMessage( $tagName, $context );
-
 						$result[] = [
 							'name' => $tagName,
 							'label' => Sanitizer::stripAllTags(
 								ChangeTags::tagDescription( $tagName, $context )
 							),
-							'description' => $desc ? Sanitizer::stripAllTags( $desc->parse() ) : '',
+							'description' =>
+								ChangeTags::truncateTagDescription(
+									$tagName, self::TAG_DESC_CHARACTER_LIMIT, $context
+								),
 							'cssClass' => Sanitizer::escapeClass( 'mw-tag-' . $tagName ),
 							'hits' => $hits,
 						];
@@ -838,7 +857,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 */
 	protected function outputTimeout() {
 		$this->getOutput()->addHTML(
-			'<div class="mw-changeslist-timeout">' .
+			'<div class="mw-changeslist-empty mw-changeslist-timeout">' .
 			$this->msg( 'recentchanges-timeout' )->parse() .
 			'</div>'
 		);
@@ -1625,13 +1644,9 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		# Collapsible
 		$collapsedState = $this->getRequest()->getCookie( 'changeslist-state' );
 		$collapsedClass = $collapsedState === 'collapsed' ? ' mw-collapsed' : '';
-		# Enhanced mode
-		$enhancedMode = $this->getRequest()->getBool( 'enhanced', $user->getOption( 'usenewrc' ) );
-		$enhancedClass = $enhancedMode ? ' mw-enhanced' : '';
 
-		$legendClasses = $collapsedClass . $enhancedClass;
 		$legend =
-			'<div class="mw-changeslist-legend mw-collapsible' . $legendClasses . '">' .
+			'<div class="mw-changeslist-legend mw-collapsible' . $collapsedClass . '">' .
 				$legendHeading .
 				'<div class="mw-collapsible-content">' . $legend . '</div>' .
 			'</div>';
@@ -1700,22 +1715,27 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			return;
 		}
 
+		$actorMigration = ActorMigration::newMigration();
+		$actorQuery = $actorMigration->getJoin( 'rc_user' );
+		$tables += $actorQuery['tables'];
+		$join_conds += $actorQuery['joins'];
+
 		// 'registered' but not 'unregistered', experience levels, if any, are included in 'registered'
 		if (
 			in_array( 'registered', $selectedExpLevels ) &&
 			!in_array( 'unregistered', $selectedExpLevels )
 		) {
-			$conds[] = 'rc_user != 0';
+			$conds[] = $actorMigration->isNotAnon( $actorQuery['fields']['rc_user'] );
 			return;
 		}
 
 		if ( $selectedExpLevels === [ 'unregistered' ] ) {
-			$conds[] = 'rc_user = 0';
+			$conds[] = $actorMigration->isAnon( $actorQuery['fields']['rc_user'] );
 			return;
 		}
 
 		$tables[] = 'user';
-		$join_conds['user'] = [ 'LEFT JOIN', 'rc_user = user_id' ];
+		$join_conds['user'] = [ 'LEFT JOIN', $actorQuery['fields']['rc_user'] . ' = user_id' ];
 
 		if ( $now === 0 ) {
 			$now = time();
@@ -1745,7 +1765,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 		if ( in_array( 'unregistered', $selectedExpLevels ) ) {
 			$selectedExpLevels = array_diff( $selectedExpLevels, [ 'unregistered' ] );
-			$conditions[] = 'rc_user = 0';
+			$conditions[] = $actorMigration->isAnon( $actorQuery['fields']['rc_user'] );
 		}
 
 		if ( $selectedExpLevels === [ 'newcomer' ] ) {
@@ -1767,7 +1787,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		} elseif ( $selectedExpLevels === [ 'experienced', 'learner' ] ) {
 			$conditions[] = $aboveNewcomer;
 		} elseif ( $selectedExpLevels === [ 'experienced', 'learner', 'newcomer' ] ) {
-			$conditions[] = 'rc_user != 0';
+			$conditions[] = $actorMigration->isNotAnon( $actorQuery['fields']['rc_user'] );
 		}
 
 		if ( count( $conditions ) > 1 ) {

@@ -528,9 +528,9 @@ $wgJsMimeType = 'text/javascript';
 $wgFileExtensions = array_values( array_diff( $wgFileExtensions, $wgFileBlacklist ) );
 
 if ( $wgInvalidateCacheOnLocalSettingsChange ) {
-	MediaWiki\suppressWarnings();
+	Wikimedia\suppressWarnings();
 	$wgCacheEpoch = max( $wgCacheEpoch, gmdate( 'YmdHis', filemtime( "$IP/LocalSettings.php" ) ) );
-	MediaWiki\restoreWarnings();
+	Wikimedia\restoreWarnings();
 }
 
 if ( $wgNewUserLog ) {
@@ -717,9 +717,9 @@ wfMemoryLimit();
  * explicitly set. Inspired by phpMyAdmin's treatment of the problem.
  */
 if ( is_null( $wgLocaltimezone ) ) {
-	MediaWiki\suppressWarnings();
+	Wikimedia\suppressWarnings();
 	$wgLocaltimezone = date_default_timezone_get();
-	MediaWiki\restoreWarnings();
+	Wikimedia\restoreWarnings();
 }
 
 date_default_timezone_set( $wgLocaltimezone );
@@ -736,20 +736,22 @@ if ( !$wgDBerrorLogTZ ) {
 
 // Initialize the request object in $wgRequest
 $wgRequest = RequestContext::getMain()->getRequest(); // BackCompat
-// Set user IP/agent information for causal consistency purposes.
-// The cpPosIndex cookie has no prefix and is set by MediaWiki::preOutputCommit().
-$cpPosIndex = $wgRequest->getInt( 'cpPosIndex', (int)$wgRequest->getCookie( 'cpPosIndex', '' ) );
+// Set user IP/agent information for agent session consistency purposes
 MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->setRequestInfo( [
 	'IPAddress' => $wgRequest->getIP(),
 	'UserAgent' => $wgRequest->getHeader( 'User-Agent' ),
 	'ChronologyProtection' => $wgRequest->getHeader( 'ChronologyProtection' ),
-	'ChronologyPositionIndex' => $cpPosIndex
+	// The cpPosIndex cookie has no prefix and is set by MediaWiki::preOutputCommit()
+	'ChronologyPositionIndex' =>
+		$wgRequest->getInt( 'cpPosIndex', (int)$wgRequest->getCookie( 'cpPosIndex', '' ) )
 ] );
-// Make sure that caching does not compromise the consistency improvements
-if ( $cpPosIndex ) {
+// Make sure that object caching does not undermine the ChronologyProtector improvements
+if ( $wgRequest->getCookie( 'UseDC', '' ) === 'master' ) {
+	// The user is pinned to the primary DC, meaning that they made recent changes which should
+	// be reflected in their subsequent web requests. Avoid the use of interim cache keys because
+	// they use a blind TTL and could be stale if an object changes twice in a short time span.
 	MediaWikiServices::getInstance()->getMainWANObjectCache()->useInterimHoldOffCaching( false );
 }
-unset( $cpPosIndex );
 
 // Useful debug output
 if ( $wgCommandLineMode ) {
@@ -872,7 +874,7 @@ if ( !defined( 'MW_NO_SESSION' ) && !$wgCommandLineMode ) {
 	) {
 		// Start the PHP-session for backwards compatibility
 		session_id( $session->getId() );
-		MediaWiki\quietCall( 'session_start' );
+		Wikimedia\quietCall( 'session_start' );
 	}
 
 	unset( $session );

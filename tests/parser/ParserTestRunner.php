@@ -811,10 +811,6 @@ class ParserTestRunner {
 		$options = ParserOptions::newFromContext( $context );
 		$options->setTimestamp( $this->getFakeTimestamp() );
 
-		if ( !isset( $opts['wrap'] ) ) {
-			$options->setWrapOutputClass( false );
-		}
-
 		if ( isset( $opts['tidy'] ) ) {
 			if ( !$this->tidySupport->isEnabled() ) {
 				$this->recorder->skipped( $test, 'tidy extension is not installed' );
@@ -854,7 +850,8 @@ class ParserTestRunner {
 		} else {
 			$output = $parser->parse( $test['input'], $title, $options, true, true, 1337 );
 			$out = $output->getText( [
-				'allowTOC' => !isset( $opts['notoc'] )
+				'allowTOC' => !isset( $opts['notoc'] ),
+				'unwrap' => !isset( $opts['wrap'] ),
 			] );
 			if ( isset( $opts['tidy'] ) ) {
 				$out = preg_replace( '/\s+$/', '', $out );
@@ -892,7 +889,7 @@ class ParserTestRunner {
 		if ( isset( $output ) && isset( $opts['showflags'] ) ) {
 			$actualFlags = array_keys( TestingAccessWrapper::newFromObject( $output )->mFlags );
 			sort( $actualFlags );
-			$out .= "\nflags=" . join( ', ', $actualFlags );
+			$out .= "\nflags=" . implode( ', ', $actualFlags );
 		}
 
 		ScopedCallback::consume( $teardownGuard );
@@ -1151,7 +1148,7 @@ class ParserTestRunner {
 	 * @return array
 	 */
 	private function listTables() {
-		global $wgCommentTableSchemaMigrationStage;
+		global $wgCommentTableSchemaMigrationStage, $wgActorTableSchemaMigrationStage;
 
 		$tables = [ 'user', 'user_properties', 'user_former_groups', 'page', 'page_restrictions',
 			'protected_titles', 'revision', 'ip_changes', 'text', 'pagelinks', 'imagelinks',
@@ -1167,6 +1164,12 @@ class ParserTestRunner {
 			$tables[] = 'comment';
 			$tables[] = 'revision_comment_temp';
 			$tables[] = 'image_comment_temp';
+		}
+
+		if ( $wgActorTableSchemaMigrationStage >= MIGRATION_WRITE_BOTH ) {
+			// The new tables for actors are in use
+			$tables[] = 'actor';
+			$tables[] = 'revision_actor_temp';
 		}
 
 		if ( in_array( $this->db->getType(), [ 'mysql', 'sqlite', 'oracle' ] ) ) {

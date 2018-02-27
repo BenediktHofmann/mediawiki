@@ -47,17 +47,23 @@ use Psr\Log\NullLogger;
  * There are three supported ways to handle broadcasted operations:
  *   - a) Configure the 'purge' EventRelayer to point to a valid PubSub endpoint
  *         that has subscribed listeners on the cache servers applying the cache updates.
- *   - b) Ignore the 'purge' EventRelayer configuration (default is NullEventRelayer)
- *         and set up mcrouter as the underlying cache backend, using one of the memcached
- *         BagOStuff classes as 'cache'. Use OperationSelectorRoute in the mcrouter settings
- *         to configure 'set' and 'delete' operations to go to all DCs via AllAsyncRoute and
- *         configure other operations to go to the local DC via PoolRoute (for reference,
- *         see https://github.com/facebook/mcrouter/wiki/List-of-Route-Handles).
- *   - c) Ignore the 'purge' EventRelayer configuration (default is NullEventRelayer)
- *         and set up dynomite as cache middleware between the web servers and either
- *         memcached or redis. This will also broadcast all key setting operations, not just purges,
- *         which can be useful for cache warming. Writes are eventually consistent via the
- *         Dynamo replication model (see https://github.com/Netflix/dynomite).
+ *   - b) Ommit the 'purge' EventRelayer parameter and set up mcrouter as the underlying cache
+ *        backend, using a memcached BagOStuff class for the 'cache' parameter. The 'region'
+ *        and 'cluster' parameters must be provided and 'mcrouterAware' must be set to 'true'.
+ *        Configure mcrouter as follows:
+ *          - 1) Use Route Prefixing based on region (datacenter) and cache cluster.
+ *                See https://github.com/facebook/mcrouter/wiki/Routing-Prefix and
+ *                https://github.com/facebook/mcrouter/wiki/Multi-cluster-broadcast-setup
+ *          - 2) To increase the consistency of delete() and touchCheckKey() during cache
+ *                server membership changes, you can use the OperationSelectorRoute to
+ *                configure 'set' and 'delete' operations to go to all servers in the cache
+ *                cluster, instead of just one server determined by hashing.
+ *                See https://github.com/facebook/mcrouter/wiki/List-of-Route-Handles
+ *   - c) Ommit the 'purge' EventRelayer parameter and set up dynomite as cache middleware
+ *         between the web servers and either memcached or redis. This will also broadcast all
+ *         key setting operations, not just purges, which can be useful for cache warming.
+ *         Writes are eventually consistent via the Dynamo replication model.
+ *         See https://github.com/Netflix/dynomite
  *
  * Broadcasted operations like delete() and touchCheckKey() are done asynchronously
  * in all datacenters this way, though the local one should likely be near immediate.
@@ -87,6 +93,12 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	protected $purgeChannel;
 	/** @var EventRelayer Bus that handles purge broadcasts */
 	protected $purgeRelayer;
+	/** @bar bool Whether to use mcrouter key prefixing for routing */
+	protected $mcrouterAware;
+	/** @var string Physical region for mcrouter use */
+	protected $region;
+	/** @var string Cache cluster name for mcrouter use */
+	protected $cluster;
 	/** @var LoggerInterface */
 	protected $logger;
 	/** @var StatsdDataFactoryInterface */
@@ -122,8 +134,6 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	const LOCK_TTL = 10;
 	/** Default remaining TTL at which to consider pre-emptive regeneration */
 	const LOW_TTL = 30;
-	/** Default time-since-expiry on a miss that makes a key "hot" */
-	const LOCK_TSE = 1;
 
 	/** Never consider performing "popularity" refreshes until a key reaches this age */
 	const AGE_NEW = 60;
@@ -200,6 +210,16 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	 *       callback supplied by the getWithSetCallback() caller. The result will be saved
 	 *       as normal. The handler is expected to call the WAN cache callback at an opportune
 	 *       time (e.g. HTTP post-send), though generally within a few 100ms. [optional]
+	 *   - region: the current physical region. This is required when using mcrouter as the
+	 *       backing store proxy. [optional]
+	 *   - cluster: name of the cache cluster used by this WAN cache. The name must be the
+	 *       same in all datacenters; the ("region","cluster") tuple is what distinguishes
+	 *       the counterpart cache clusters among all the datacenter. The contents of
+	 *       https://github.com/facebook/mcrouter/wiki/Config-Files give background on this.
+	 *       This is required when using mcrouter as the backing store proxy. [optional]
+	 *   - mcrouterAware: set as true if mcrouter is the backing store proxy and mcrouter
+	 *       is configured to interpret /<region>/<cluster>/ key prefixes as routes. This
+	 *       requires that "region" and "cluster" are both set above. [optional]
 	 */
 	public function __construct( array $params ) {
 		$this->cache = $params['cache'];
@@ -209,6 +229,10 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 		$this->purgeRelayer = isset( $params['relayers']['purge'] )
 			? $params['relayers']['purge']
 			: new EventRelayerNull( [] );
+		$this->region = isset( $params['region'] ) ? $params['region'] : 'main';
+		$this->cluster = isset( $params['cluster'] ) ? $params['cluster'] : 'wan-main';
+		$this->mcrouterAware = !empty( $params['mcrouterAware'] );
+
 		$this->setLogger( isset( $params['logger'] ) ? $params['logger'] : new NullLogger() );
 		$this->stats = isset( $params['stats'] ) ? $params['stats'] : new NullStatsdDataFactory();
 		$this->asyncHandler = isset( $params['asyncHandler'] ) ? $params['asyncHandler'] : null;
@@ -258,7 +282,8 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	 * (e.g. the default REPEATABLE-READ in innoDB). Even for mutable data, that
 	 * isolation can largely be maintained by doing the following:
 	 *   - a) Calling delete() on entity change *and* creation, before DB commit
-	 *   - b) Keeping transaction duration shorter than delete() hold-off TTL
+	 *   - b) Keeping transaction duration shorter than the delete() hold-off TTL
+	 *   - c) Disabling interim key caching via useInterimHoldOffCaching() before get() calls
 	 *
 	 * However, pre-snapshot values might still be seen if an update was made
 	 * in a remote datacenter but the purge from delete() didn't relay yet.
@@ -492,18 +517,18 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 			// Case B: any long-running transaction; ignore this set()
 			} elseif ( $age > self::MAX_READ_LAG ) {
 				$this->logger->info( 'Rejected set() for {cachekey} due to snapshot lag.',
-					[ 'cachekey' => $key ] );
+					[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age ] );
 
 				return true; // no-op the write for being unsafe
 			// Case C: high replication lag; lower TTL instead of ignoring all set()s
 			} elseif ( $lag === false || $lag > self::MAX_READ_LAG ) {
 				$ttl = $ttl ? min( $ttl, self::TTL_LAGGED ) : self::TTL_LAGGED;
 				$this->logger->warning( 'Lowered set() TTL for {cachekey} due to replication lag.',
-					[ 'cachekey' => $key ] );
+					[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age ] );
 			// Case D: medium length request with medium replication lag; ignore this set()
 			} else {
 				$this->logger->info( 'Rejected set() for {cachekey} due to high read lag.',
-					[ 'cachekey' => $key ] );
+					[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age ] );
 
 				return true; // no-op the write for being unsafe
 			}
@@ -1511,7 +1536,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	}
 
 	/**
-	 * Locally set a key to expire soon if it is stale based on $purgeTimestamp
+	 * Set a key to soon expire in the local cluster if it pre-dates $purgeTimestamp
 	 *
 	 * This sets stale keys' time-to-live at HOLDOFF_TTL seconds, which both avoids
 	 * broadcasting in mcrouter setups and also avoids races with new tombstones.
@@ -1543,7 +1568,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	}
 
 	/**
-	 * Locally set a "check" key to expire soon if it is stale based on $purgeTimestamp
+	 * Set a "check" key to soon expire in the local cluster if it pre-dates $purgeTimestamp
 	 *
 	 * @param string $key Cache key
 	 * @param int $purgeTimestamp UNIX timestamp of purge
@@ -1556,7 +1581,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 		if ( $purge && $purge[self::FLD_TIME] < $purgeTimestamp ) {
 			$isStale = true;
 			$this->logger->warning( "Reaping stale check key '$key'." );
-			$ok = $this->cache->changeTTL( self::TIME_KEY_PREFIX . $key, 1 );
+			$ok = $this->cache->changeTTL( self::TIME_KEY_PREFIX . $key, self::TTL_SECOND );
 			if ( !$ok ) {
 				$this->logger->error( "Could not complete reap of check key '$key'." );
 			}
@@ -1779,9 +1804,18 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	 * @return bool Success
 	 */
 	protected function relayPurge( $key, $ttl, $holdoff ) {
-		if ( $this->purgeRelayer instanceof EventRelayerNull ) {
+		if ( $this->mcrouterAware ) {
+			// See https://github.com/facebook/mcrouter/wiki/Multi-cluster-broadcast-setup
+			// Wildcards select all matching routes, e.g. the WAN cluster on all DCs
+			$ok = $this->cache->set(
+				"/*/{$this->cluster}/{$key}",
+				$this->makePurgeValue( $this->getCurrentTime(), self::HOLDOFF_NONE ),
+				$ttl
+			);
+		} elseif ( $this->purgeRelayer instanceof EventRelayerNull ) {
 			// This handles the mcrouter and the single-DC case
-			$ok = $this->cache->set( $key,
+			$ok = $this->cache->set(
+				$key,
 				$this->makePurgeValue( $this->getCurrentTime(), self::HOLDOFF_NONE ),
 				$ttl
 			);
@@ -1790,7 +1824,7 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 				'cmd' => 'set',
 				'key' => $key,
 				'val' => 'PURGED:$UNIXTIME$:' . (int)$holdoff,
-				'ttl' => max( $ttl, 1 ),
+				'ttl' => max( $ttl, self::TTL_SECOND ),
 				'sbt' => true, // substitute $UNIXTIME$ with actual microtime
 			] );
 
@@ -1810,8 +1844,12 @@ class WANObjectCache implements IExpiringStore, LoggerAwareInterface {
 	 * @return bool Success
 	 */
 	protected function relayDelete( $key ) {
-		if ( $this->purgeRelayer instanceof EventRelayerNull ) {
-			// This handles the mcrouter and the single-DC case
+		if ( $this->mcrouterAware ) {
+			// See https://github.com/facebook/mcrouter/wiki/Multi-cluster-broadcast-setup
+			// Wildcards select all matching routes, e.g. the WAN cluster on all DCs
+			$ok = $this->cache->delete( "/*/{$this->cluster}/{$key}" );
+		} elseif ( $this->purgeRelayer instanceof EventRelayerNull ) {
+			// Some other proxy handles broadcasting or there is only one datacenter
 			$ok = $this->cache->delete( $key );
 		} else {
 			$event = $this->cache->modifySimpleRelayEvent( [

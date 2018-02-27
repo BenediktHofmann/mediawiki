@@ -5,6 +5,7 @@
  * @group Parser
  *
  * @covers Parser
+ * @covers BlockLevelPass
  * @covers StripState
  *
  * @covers Preprocessor_DOM
@@ -46,7 +47,6 @@ class TagHooksTest extends MediaWikiTestCase {
 	private function getParserOptions() {
 		global $wgContLang;
 		$popt = ParserOptions::newFromUserAndLang( new User, $wgContLang );
-		$popt->setWrapOutputClass( false );
 		return $popt;
 	}
 
@@ -63,7 +63,7 @@ class TagHooksTest extends MediaWikiTestCase {
 			Title::newFromText( 'Test' ),
 			$this->getParserOptions()
 		);
-		$this->assertEquals( "<p>FooOneBaz\n</p>", $parserOutput->getText() );
+		$this->assertEquals( "<p>FooOneBaz\n</p>", $parserOutput->getText( [ 'unwrap' => true ] ) );
 
 		$parser->mPreprocessor = null; # Break the Parser <-> Preprocessor cycle
 	}
@@ -98,7 +98,7 @@ class TagHooksTest extends MediaWikiTestCase {
 			Title::newFromText( 'Test' ),
 			$this->getParserOptions()
 		);
-		$this->assertEquals( "<p>FooOneBaz\n</p>", $parserOutput->getText() );
+		$this->assertEquals( "<p>FooOneBaz\n</p>", $parserOutput->getText( [ 'unwrap' => true ] ) );
 
 		$parser->mPreprocessor = null; # Break the Parser <-> Preprocessor cycle
 	}

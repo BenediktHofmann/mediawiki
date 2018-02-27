@@ -75,10 +75,12 @@
 		}
 	}
 
-	// Temporarily hide any specific 'no result' message while we load rcfilters.
-	.mw-changeslist-empty,
-	.mw-changeslist-timeout,
-	.mw-changeslist-notargetpage {
+	// Temporarily hide the empty results section while we load rcfilters.
+	.mw-changeslist-empty {
+		display: none;
+	}
+
+	.errorbox {
 		display: none;
 	}
 
@@ -130,6 +132,11 @@
 	#contentSub,
 	form#mw-watchlist-resetbutton {
 		display: none;
+	}
+
+	#jump-to-nav {
+		margin-top: -0.5em;
+		margin-bottom: 0.5em;
 	}
 
 	// Make the watchlist-details message display while loading, but make it not take up any

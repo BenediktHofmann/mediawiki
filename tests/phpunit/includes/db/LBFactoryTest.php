@@ -194,11 +194,11 @@ class LBFactoryTest extends MediaWikiTestCase {
 	 * @covers \Wikimedia\Rdbms\ChronologyProtector
 	 */
 	public function testChronologyProtector() {
-		// (a) First HTTP request
-		$m1Pos = new MySQLMasterPos( 'db1034-bin.000976', '843431247' );
-		$m2Pos = new MySQLMasterPos( 'db1064-bin.002400', '794074907' );
-
 		$now = microtime( true );
+
+		// (a) First HTTP request
+		$m1Pos = new MySQLMasterPos( 'db1034-bin.000976/843431247', $now );
+		$m2Pos = new MySQLMasterPos( 'db1064-bin.002400/794074907', $now );
 
 		// Master DB 1
 		$mockDB1 = $this->getMockBuilder( DatabaseMysqli::class )
@@ -376,14 +376,14 @@ class LBFactoryTest extends MediaWikiTestCase {
 		$db = $lb->getConnection( DB_MASTER, [], '' );
 
 		$this->assertEquals(
-			$wgDBname,
+			'',
 			$db->getDomainId(),
-			'Main domain ID handle used; same DB name'
+			'Null domain ID handle used'
 		);
 		$this->assertEquals(
-			$wgDBname,
+			'',
 			$db->getDBname(),
-			'Main domain ID handle used; same DB name'
+			'Null domain ID handle used'
 		);
 		$this->assertEquals(
 			'',
@@ -446,16 +446,16 @@ class LBFactoryTest extends MediaWikiTestCase {
 		$dbname = 'unittest-domain'; // explodes if DB is selected
 		$factory = $this->newLBFactoryMulti(
 			[ 'localDomain' => ( new DatabaseDomain( $dbname, null, '' ) )->getId() ],
-			[ 'dbFilePath' => $dbPath ]
+			[
+				'dbFilePath' => $dbPath,
+				'dbName' => 'do_not_select_me' // explodes if DB is selected
+			]
 		);
 		$lb = $factory->getMainLB();
 		/** @var Database $db */
 		$db = $lb->getConnection( DB_MASTER, [], '' );
 
-		$this->assertEquals(
-			$wgDBname,
-			$db->getDomainID()
-		);
+		$this->assertEquals( '', $db->getDomainID(), "Null domain used" );
 
 		$this->assertEquals(
 			$this->quoteTable( $db, 'page' ),
@@ -506,9 +506,9 @@ class LBFactoryTest extends MediaWikiTestCase {
 			$this->assertInstanceOf( \Wikimedia\Rdbms\DBConnectionError::class, $e );
 			$this->assertFalse( $db->isOpen() );
 		} else {
-			\MediaWiki\suppressWarnings();
+			\Wikimedia\suppressWarnings();
 			$this->assertFalse( $db->selectDB( 'garbage-db' ) );
-			\MediaWiki\restoreWarnings();
+			\Wikimedia\restoreWarnings();
 		}
 
 		$lb->reuseConnection( $db ); // don't care
