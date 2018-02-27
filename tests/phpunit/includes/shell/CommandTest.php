@@ -7,7 +7,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers \MediaWiki\Shell\Command
  * @group Shell
  */
-class CommandTest extends PHPUnit_Framework_TestCase {
+class CommandTest extends PHPUnit\Framework\TestCase {
 
 	use MediaWikiCoversValidator;
 
@@ -170,5 +170,12 @@ class CommandTest extends PHPUnit_Framework_TestCase {
 		$command->input( str_repeat( '!', 1000000 ) );
 		$result = $command->execute();
 		$this->assertSame( 1000000, strlen( $result->getStdout() ) );
+
+		// And try it with empty input
+		$command = new Command();
+		$command->params( 'cat' );
+		$command->input( '' );
+		$result = $command->execute();
+		$this->assertSame( '', $result->getStdout() );
 	}
 }

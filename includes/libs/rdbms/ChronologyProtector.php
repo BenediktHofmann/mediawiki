@@ -75,7 +75,7 @@ class ChronologyProtector implements LoggerAwareInterface {
 	public function __construct( BagOStuff $store, array $client, $posIndex = null ) {
 		$this->store = $store;
 		$this->clientId = md5( $client['ip'] . "\n" . $client['agent'] );
-		$this->key = $store->makeGlobalKey( __CLASS__, $this->clientId, 'v1' );
+		$this->key = $store->makeGlobalKey( __CLASS__, $this->clientId, 'v2' );
 		$this->waitForPosIndex = $posIndex;
 		$this->logger = new NullLogger();
 	}
@@ -124,7 +124,7 @@ class ChronologyProtector implements LoggerAwareInterface {
 			$this->startupPositions[$masterName] instanceof DBMasterPos
 		) {
 			$pos = $this->startupPositions[$masterName];
-			$this->logger->info( __METHOD__ . ": LB for '$masterName' set to pos $pos\n" );
+			$this->logger->debug( __METHOD__ . ": LB for '$masterName' set to pos $pos\n" );
 			$lb->waitFor( $pos );
 		}
 	}
@@ -148,11 +148,11 @@ class ChronologyProtector implements LoggerAwareInterface {
 		if ( $lb->getServerCount() > 1 ) {
 			$pos = $lb->getMasterPos();
 			if ( $pos ) {
-				$this->logger->info( __METHOD__ . ": LB for '$masterName' has pos $pos\n" );
+				$this->logger->debug( __METHOD__ . ": LB for '$masterName' has pos $pos\n" );
 				$this->shutdownPositions[$masterName] = $pos;
 			}
 		} else {
-			$this->logger->info( __METHOD__ . ": DB '$masterName' touched\n" );
+			$this->logger->debug( __METHOD__ . ": DB '$masterName' touched\n" );
 		}
 		$this->shutdownTouchDBs[$masterName] = 1;
 	}
@@ -186,7 +186,7 @@ class ChronologyProtector implements LoggerAwareInterface {
 			return []; // nothing to save
 		}
 
-		$this->logger->info( __METHOD__ . ": saving master pos for " .
+		$this->logger->debug( __METHOD__ . ": saving master pos for " .
 			implode( ', ', array_keys( $this->shutdownPositions ) ) . "\n"
 		);
 
@@ -299,10 +299,10 @@ class ChronologyProtector implements LoggerAwareInterface {
 			}
 
 			$this->startupPositions = $data ? $data['positions'] : [];
-			$this->logger->info( __METHOD__ . ": key is {$this->key} (read)\n" );
+			$this->logger->debug( __METHOD__ . ": key is {$this->key} (read)\n" );
 		} else {
 			$this->startupPositions = [];
-			$this->logger->info( __METHOD__ . ": key is {$this->key} (unread)\n" );
+			$this->logger->debug( __METHOD__ . ": key is {$this->key} (unread)\n" );
 		}
 	}
 

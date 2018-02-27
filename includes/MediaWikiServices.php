@@ -1,6 +1,7 @@
 <?php
 namespace MediaWiki;
 
+use CommentStore;
 use Config;
 use ConfigFactory;
 use CryptHKDF;
@@ -690,6 +691,30 @@ class MediaWikiServices extends ServiceContainer {
 	}
 
 	/**
+	 * @since 1.31
+	 * @return \UploadRevisionImporter
+	 */
+	public function getWikiRevisionUploadImporter() {
+		return $this->getService( 'UploadRevisionImporter' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return \OldRevisionImporter
+	 */
+	public function getWikiRevisionOldRevisionImporter() {
+		return $this->getService( 'OldRevisionImporter' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return \OldRevisionImporter
+	 */
+	public function getWikiRevisionOldRevisionImporterNoUpdates() {
+		return $this->getService( 'WikiRevisionOldRevisionImporterNoUpdates' );
+	}
+
+	/**
 	 * @since 1.30
 	 * @return CommandFactory
 	 */
@@ -759,6 +784,22 @@ class MediaWikiServices extends ServiceContainer {
 	 */
 	public function getHttpRequestFactory() {
 		return $this->getService( 'HttpRequestFactory' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return CommentStore
+	 */
+	public function getCommentStore() {
+		return $this->getService( 'CommentStore' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return ActorMigration
+	 */
+	public function getActorMigration() {
+		return $this->getService( 'ActorMigration' );
 	}
 
 	///////////////////////////////////////////////////////////////////////////

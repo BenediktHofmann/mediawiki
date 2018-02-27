@@ -27,10 +27,11 @@
 			"Redredsonia",
 			"Alexey zakharenkov",
 			"Facenapalm",
-			"Jack who built the house"
+			"Jack who built the house",
+			"Mouse21"
 		]
 	},
-	"apihelp-main-extended-description": "<div class=\"hlist plainlinks api-main-links\">\n* [[mw:Special:MyLanguage/API:Main_page|Документация]]\n* [[mw:Special:MyLanguage/API:FAQ|ЧаВО]]\n* [https://lists.wikimedia.org/mailman/listinfo/mediawiki-api Почтовая рассылка]\n* [https://lists.wikimedia.org/mailman/listinfo/mediawiki-api-announce Новости API]\n* [https://phabricator.wikimedia.org/maniphest/query/GebfyV4uCaLd/#R Ошибки и запросы]\n</div>\n<strong>Статус:</strong> Все отображаемые на этой странице функции должны работать, однако API находится в статусе активной разработки и может измениться в любой момент. Подпишитесь на [https://lists.wikimedia.org/pipermail/mediawiki-api-announce/ почтовую рассылку mediawiki-api-announce], чтобы быть в курсе обновлений.\n\n<strong>Ошибочные запросы:</strong> Если API получает запрос с ошибкой, вернётся заголовок HTTP с ключом «MediaWiki-API-Error», после чего значение заголовка и код ошибки будут отправлены обратно и установлены в то же значение. Более подробную информацию см. [[mw:Special:MyLanguage/API:Errors_and_warnings|API: Ошибки и предупреждения]].\n\n<strong>Тестирование:</strong> для удобства тестирования API-запросов, см. [[Special:ApiSandbox]].",
+	"apihelp-main-extended-description": "<div class=\"hlist plainlinks api-main-links\">\n* [[mw:Special:MyLanguage/API:Main_page|Документация]]\n* [[mw:Special:MyLanguage/API:FAQ|ЧаВО]]\n* [https://lists.wikimedia.org/mailman/listinfo/mediawiki-api Почтовая рассылка]\n* [https://lists.wikimedia.org/mailman/listinfo/mediawiki-api-announce Новости API]\n* [https://phabricator.wikimedia.org/maniphest/query/GebfyV4uCaLd/#R Ошибки и запросы]\n</div>\n<strong>Статус:</strong> Все отображаемые на этой странице функции должны работать, однако API находится в статусе активной разработки и может измениться в любой момент. Подпишитесь на [https://lists.wikimedia.org/pipermail/mediawiki-api-announce/ почтовую рассылку mediawiki-api-announce], чтобы быть в курсе обновлений.\n\n<strong>Ошибочные запросы:</strong> Если API получает запрос с ошибкой, вернётся заголовок HTTP с ключом «MediaWiki-API-Error», после чего значение заголовка и код ошибки будут отправлены обратно и установлены в то же значение. Более подробную информацию см. [[mw:Special:MyLanguage/API:Errors_and_warnings|API: Ошибки и предупреждения]].\n\n<p class=\"mw-apisandbox-link\"><strong>Тестирование:</strong> для удобства тестирования API-запросов, см. [[Special:ApiSandbox]].</p>",
 	"apihelp-main-param-action": "Действие, которое следует выполнить.",
 	"apihelp-main-param-format": "Формат вывода.",
 	"apihelp-main-param-maxlag": "Значение максимального отставания может использоваться, когда MediaWiki установлена на кластер из реплицируемых баз данных. Чтобы избежать ухудшения ситуации с отставанием репликации сайта, этот параметр может заставить клиента ждать, когда задержка репликации станет ниже указанного значения. В случае чрезмерной задержки возвращается код ошибки «<samp>maxlag</samp>» с сообщением «<samp>Waiting for $host: $lag seconds lagged</samp>».<br>См. подробнее на странице с описанием [[mw:Special:MyLanguage/Manual:Maxlag_parameter|Manual: параметра Maxlag]].",
@@ -219,8 +220,6 @@
 	"apihelp-feedrecentchanges-param-tagfilter": "Фильтр по меткам.",
 	"apihelp-feedrecentchanges-param-target": "Показать только правки на страницах, на которые ссылается данная.",
 	"apihelp-feedrecentchanges-param-showlinkedto": "Показать правки на страницах, ссылающихся на данную.",
-	"apihelp-feedrecentchanges-param-categories": "Показать только правки на страницах, включённых во все данные категории.",
-	"apihelp-feedrecentchanges-param-categories_any": "Показать только правки на страницах, включённых в хотя бы одну из данных категорий.",
 	"apihelp-feedrecentchanges-example-simple": "Список последних изменений.",
 	"apihelp-feedrecentchanges-example-30days": "Список последних изменений за 30 дней.",
 	"apihelp-feedwatchlist-summary": "Возвращает ленту списка наблюдения.",
@@ -384,6 +383,7 @@
 	"apihelp-parse-param-disablepp": "Вместо этого используйте <var>$1disablelimitreport</var>.",
 	"apihelp-parse-param-disableeditsection": "Опустить ссылки на редактирование разделов из результата парсинга.",
 	"apihelp-parse-param-disabletidy": "Не проводить очистку HTML (например, с помощью tidy) результатов парсинга.",
+	"apihelp-parse-param-disablestylededuplication": "Не дедуплицируйте встроенные таблицы стилей в выходе парсера.",
 	"apihelp-parse-param-generatexml": "Сгенерировать дерево парсинга XML (требуется модель содержимого <code>$1</code>, замещено <kbd>$2prop=parsetree</kbd>).",
 	"apihelp-parse-param-preview": "Проанализировать в режиме препросмотра.",
 	"apihelp-parse-param-sectionpreview": "Распарсить в режиме предпросмотра раздела (также активирует режим предпросмотра).",

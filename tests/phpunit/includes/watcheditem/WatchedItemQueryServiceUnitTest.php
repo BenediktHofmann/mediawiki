@@ -1,14 +1,80 @@
 <?php
 
-use Wikimedia\ScopedCallback;
+use Wikimedia\Rdbms\LoadBalancer;
 use Wikimedia\TestingAccessWrapper;
 
 /**
  * @covers WatchedItemQueryService
  */
-class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
+class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 
 	use MediaWikiCoversValidator;
+
+	/**
+	 * @return PHPUnit_Framework_MockObject_MockObject|CommentStore
+	 */
+	private function getMockCommentStore() {
+		$mockStore = $this->getMockBuilder( CommentStore::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$mockStore->expects( $this->any() )
+			->method( 'getFields' )
+			->willReturn( [ 'commentstore' => 'fields' ] );
+		$mockStore->expects( $this->any() )
+			->method( 'getJoin' )
+			->willReturn( [
+				'tables' => [ 'commentstore' => 'table' ],
+				'fields' => [ 'commentstore' => 'field' ],
+				'joins' => [ 'commentstore' => 'join' ],
+			] );
+		return $mockStore;
+	}
+
+	/**
+	 * @return PHPUnit_Framework_MockObject_MockObject|ActorMigration
+	 */
+	private function getMockActorMigration() {
+		$mockStore = $this->getMockBuilder( ActorMigration::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$mockStore->expects( $this->any() )
+			->method( 'getJoin' )
+			->willReturn( [
+				'tables' => [ 'actormigration' => 'table' ],
+				'fields' => [
+					'rc_user' => 'actormigration_user',
+					'rc_user_text' => 'actormigration_user_text',
+					'rc_actor' => 'actormigration_actor',
+				],
+				'joins' => [ 'actormigration' => 'join' ],
+			] );
+		$mockStore->expects( $this->any() )
+			->method( 'getWhere' )
+			->willReturn( [
+				'tables' => [ 'actormigration' => 'table' ],
+				'conds' => 'actormigration_conds',
+				'joins' => [ 'actormigration' => 'join' ],
+			] );
+		$mockStore->expects( $this->any() )
+			->method( 'isAnon' )
+			->willReturn( 'actormigration is anon' );
+		$mockStore->expects( $this->any() )
+			->method( 'isNotAnon' )
+			->willReturn( 'actormigration is not anon' );
+		return $mockStore;
+	}
+
+	/**
+	 * @param PHPUnit_Framework_MockObject_MockObject|Database $mockDb
+	 * @return WatchedItemQueryService
+	 */
+	private function newService( $mockDb ) {
+		return new WatchedItemQueryService(
+			$this->getMockLoadBalancer( $mockDb ),
+			$this->getMockCommentStore(),
+			$this->getMockActorMigration()
+		);
+	}
 
 	/**
 	 * @return PHPUnit_Framework_MockObject_MockObject|Database
@@ -26,10 +92,17 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			)
 			->will( $this->returnCallback( function ( $a, $conj ) {
 				$sqlConj = $conj === LIST_AND ? ' AND ' : ' OR ';
-				return join( $sqlConj, array_map( function ( $s ) {
-					return '(' . $s . ')';
-				}, $a
-				) );
+				$conds = [];
+				foreach ( $a as $k => $v ) {
+					if ( is_int( $k ) ) {
+						$conds[] = "($v)";
+					} elseif ( is_array( $v ) ) {
+						$conds[] = "($k IN ('" . implode( "','", $v ) . "'))";
+					} else {
+						$conds[] = "($k = '$v')";
+					}
+				}
+				return implode( $sqlConj, $conds );
 			} ) );
 
 		$mock->expects( $this->any() )
@@ -232,7 +305,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 				] ),
 			] ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockUnrestrictedNonAnonUserWithId( 1 );
 
 		$startFrom = null;
@@ -392,7 +465,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 				$startFrom = [ '20160203123456', 42 ];
 			} ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		TestingAccessWrapper::newFromObject( $queryService )->extensions = [ $mockExtension ];
 
 		$startFrom = null;
@@ -459,76 +532,29 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			[
 				[ 'includeFields' => [ WatchedItemQueryService::INCLUDE_USER ] ],
 				null,
+				[ 'actormigration' => 'table' ],
+				[ 'rc_user_text' => 'actormigration_user_text' ],
 				[],
-				[ 'rc_user_text' ],
 				[],
-				[],
-				[],
+				[ 'actormigration' => 'join' ],
 			],
 			[
 				[ 'includeFields' => [ WatchedItemQueryService::INCLUDE_USER_ID ] ],
 				null,
+				[ 'actormigration' => 'table' ],
+				[ 'rc_user' => 'actormigration_user' ],
 				[],
-				[ 'rc_user' ],
 				[],
-				[],
-				[],
+				[ 'actormigration' => 'join' ],
 			],
 			[
 				[ 'includeFields' => [ WatchedItemQueryService::INCLUDE_COMMENT ] ],
 				null,
-				[],
-				[
-					'rc_comment_text' => 'rc_comment',
-					'rc_comment_data' => 'NULL',
-					'rc_comment_cid' => 'NULL',
-				],
+				[ 'commentstore' => 'table' ],
+				[ 'commentstore' => 'field' ],
 				[],
 				[],
-				[],
-				[ 'wgCommentTableSchemaMigrationStage' => MIGRATION_OLD ],
-			],
-			[
-				[ 'includeFields' => [ WatchedItemQueryService::INCLUDE_COMMENT ] ],
-				null,
-				[ 'comment_rc_comment' => 'comment' ],
-				[
-					'rc_comment_text' => 'COALESCE( comment_rc_comment.comment_text, rc_comment )',
-					'rc_comment_data' => 'comment_rc_comment.comment_data',
-					'rc_comment_cid' => 'comment_rc_comment.comment_id',
-				],
-				[],
-				[],
-				[ 'comment_rc_comment' => [ 'LEFT JOIN', 'comment_rc_comment.comment_id = rc_comment_id' ] ],
-				[ 'wgCommentTableSchemaMigrationStage' => MIGRATION_WRITE_BOTH ],
-			],
-			[
-				[ 'includeFields' => [ WatchedItemQueryService::INCLUDE_COMMENT ] ],
-				null,
-				[ 'comment_rc_comment' => 'comment' ],
-				[
-					'rc_comment_text' => 'COALESCE( comment_rc_comment.comment_text, rc_comment )',
-					'rc_comment_data' => 'comment_rc_comment.comment_data',
-					'rc_comment_cid' => 'comment_rc_comment.comment_id',
-				],
-				[],
-				[],
-				[ 'comment_rc_comment' => [ 'LEFT JOIN', 'comment_rc_comment.comment_id = rc_comment_id' ] ],
-				[ 'wgCommentTableSchemaMigrationStage' => MIGRATION_WRITE_NEW ],
-			],
-			[
-				[ 'includeFields' => [ WatchedItemQueryService::INCLUDE_COMMENT ] ],
-				null,
-				[ 'comment_rc_comment' => 'comment' ],
-				[
-					'rc_comment_text' => 'comment_rc_comment.comment_text',
-					'rc_comment_data' => 'comment_rc_comment.comment_data',
-					'rc_comment_cid' => 'comment_rc_comment.comment_id',
-				],
-				[],
-				[],
-				[ 'comment_rc_comment' => [ 'JOIN', 'comment_rc_comment.comment_id = rc_comment_id' ] ],
-				[ 'wgCommentTableSchemaMigrationStage' => MIGRATION_NEW ],
+				[ 'commentstore' => 'join' ],
 			],
 			[
 				[ 'includeFields' => [ WatchedItemQueryService::INCLUDE_PATROL_INFO ] ],
@@ -721,20 +747,20 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			[
 				[ 'filters' => [ WatchedItemQueryService::FILTER_ANON ] ],
 				null,
+				[ 'actormigration' => 'table' ],
 				[],
+				[ 'actormigration is anon' ],
 				[],
-				[ 'rc_user = 0' ],
-				[],
-				[],
+				[ 'actormigration' => 'join' ],
 			],
 			[
 				[ 'filters' => [ WatchedItemQueryService::FILTER_NOT_ANON ] ],
 				null,
+				[ 'actormigration' => 'table' ],
 				[],
+				[ 'actormigration is not anon' ],
 				[],
-				[ 'rc_user != 0' ],
-				[],
-				[],
+				[ 'actormigration' => 'join' ],
 			],
 			[
 				[ 'filters' => [ WatchedItemQueryService::FILTER_PATROLLED ] ],
@@ -775,20 +801,20 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			[
 				[ 'onlyByUser' => 'SomeOtherUser' ],
 				null,
+				[ 'actormigration' => 'table' ],
 				[],
+				[ 'actormigration_conds' ],
 				[],
-				[ 'rc_user_text' => 'SomeOtherUser' ],
-				[],
-				[],
+				[ 'actormigration' => 'join' ],
 			],
 			[
 				[ 'notByUser' => 'SomeOtherUser' ],
 				null,
+				[ 'actormigration' => 'table' ],
 				[],
+				[ 'NOT(actormigration_conds)' ],
 				[],
-				[ "rc_user_text != 'SomeOtherUser'" ],
-				[],
-				[],
+				[ 'actormigration' => 'join' ],
 			],
 			[
 				[ 'dir' => WatchedItemQueryService::DIR_OLDER ],
@@ -836,23 +862,8 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 		array $expectedExtraFields,
 		array $expectedExtraConds,
 		array $expectedDbOptions,
-		array $expectedExtraJoinConds,
-		array $globals = []
+		array $expectedExtraJoinConds
 	) {
-		// Sigh. This test class doesn't extend MediaWikiTestCase, so we have to reinvent setMwGlobals().
-		if ( $globals ) {
-			$resetGlobals = [];
-			foreach ( $globals as $k => $v ) {
-				$resetGlobals[$k] = $GLOBALS[$k];
-				$GLOBALS[$k] = $v;
-			}
-			$reset = new ScopedCallback( function () use ( $resetGlobals ) {
-				foreach ( $resetGlobals as $k => $v ) {
-					$GLOBALS[$k] = $v;
-				}
-			} );
-		}
-
 		$expectedTables = array_merge( [ 'recentchanges', 'watchlist', 'page' ], $expectedExtraTables );
 		$expectedFields = array_merge(
 			[
@@ -904,7 +915,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			)
 			->will( $this->returnValue( [] ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockUnrestrictedNonAnonUserWithId( 1 );
 
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo( $user, $options, $startFrom );
@@ -941,7 +952,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 
 		$user = $this->getMockNonAnonUserWithIdAndNoPatrolRights( 1 );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo(
 			$user,
 			[ 'filters' => [ $filtersOption ] ]
@@ -1002,7 +1013,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			->method( 'getType' )
 			->will( $this->returnValue( $dbType ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockUnrestrictedNonAnonUserWithId( 1 );
 
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo( $user, $options );
@@ -1015,62 +1026,74 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			[
 				[],
 				'deletedhistory',
+				[],
 				[
 					'(rc_type != ' . RC_LOG . ') OR ((rc_deleted & ' . LogPage::DELETED_ACTION . ') != ' .
 						LogPage::DELETED_ACTION . ')'
 				],
+				[],
 			],
 			[
 				[],
 				'suppressrevision',
+				[],
 				[
 					'(rc_type != ' . RC_LOG . ') OR (' .
 						'(rc_deleted & ' . ( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ') != ' .
 						( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ')'
 				],
+				[],
 			],
 			[
 				[],
 				'viewsuppressed',
+				[],
 				[
 					'(rc_type != ' . RC_LOG . ') OR (' .
 						'(rc_deleted & ' . ( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ') != ' .
 						( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ')'
 				],
+				[],
 			],
 			[
 				[ 'onlyByUser' => 'SomeOtherUser' ],
 				'deletedhistory',
+				[ 'actormigration' => 'table' ],
 				[
-					'rc_user_text' => 'SomeOtherUser',
+					'actormigration_conds',
 					'(rc_deleted & ' . Revision::DELETED_USER . ') != ' . Revision::DELETED_USER,
 					'(rc_type != ' . RC_LOG . ') OR ((rc_deleted & ' . LogPage::DELETED_ACTION . ') != ' .
 						LogPage::DELETED_ACTION . ')'
 				],
+				[ 'actormigration' => 'join' ],
 			],
 			[
 				[ 'onlyByUser' => 'SomeOtherUser' ],
 				'suppressrevision',
+				[ 'actormigration' => 'table' ],
 				[
-					'rc_user_text' => 'SomeOtherUser',
+					'actormigration_conds',
 					'(rc_deleted & ' . ( Revision::DELETED_USER | Revision::DELETED_RESTRICTED ) . ') != ' .
 						( Revision::DELETED_USER | Revision::DELETED_RESTRICTED ),
 					'(rc_type != ' . RC_LOG . ') OR (' .
 						'(rc_deleted & ' . ( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ') != ' .
 						( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ')'
 				],
+				[ 'actormigration' => 'join' ],
 			],
 			[
 				[ 'onlyByUser' => 'SomeOtherUser' ],
 				'viewsuppressed',
+				[ 'actormigration' => 'table' ],
 				[
-					'rc_user_text' => 'SomeOtherUser',
+					'actormigration_conds',
 					'(rc_deleted & ' . ( Revision::DELETED_USER | Revision::DELETED_RESTRICTED ) . ') != ' .
 						( Revision::DELETED_USER | Revision::DELETED_RESTRICTED ),
 					'(rc_type != ' . RC_LOG . ') OR (' .
 						'(rc_deleted & ' . ( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ') != ' .
 						( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ')'
 				],
+				[ 'actormigration' => 'join' ],
 			],
 		];
 	}
@@ -1081,7 +1104,9 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 	public function testGetWatchedItemsWithRecentChangeInfo_userPermissionRelatedExtraChecks(
 		array $options,
 		$notAllowedAction,
-		array $expectedExtraConds
+		array $expectedExtraTables,
+		array $expectedExtraConds,
+		array $expectedExtraJoins
 	) {
 		$commonConds = [ 'wl_user' => 1, '(rc_this_oldid=page_latest) OR (rc_type=3)' ];
 		$conds = array_merge( $commonConds, $expectedExtraConds );
@@ -1090,18 +1115,21 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 		$mockDb->expects( $this->once() )
 			->method( 'select' )
 			->with(
-				[ 'recentchanges', 'watchlist', 'page' ],
+				array_merge( [ 'recentchanges', 'watchlist', 'page' ], $expectedExtraTables ),
 				$this->isType( 'array' ),
 				$conds,
 				$this->isType( 'string' ),
 				$this->isType( 'array' ),
-				$this->isType( 'array' )
+				array_merge( [
+					'watchlist' => [ 'INNER JOIN', [ 'wl_namespace=rc_namespace', 'wl_title=rc_title' ] ],
+					'page' => [ 'LEFT JOIN', 'rc_cur_id=page_id' ],
+				], $expectedExtraJoins )
 			)
 			->will( $this->returnValue( [] ) );
 
 		$user = $this->getMockNonAnonUserWithIdAndRestrictedPermissions( 1, $notAllowedAction );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo( $user, $options );
 
 		$this->assertEmpty( $items );
@@ -1141,7 +1169,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			)
 			->will( $this->returnValue( [] ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockUnrestrictedNonAnonUserWithId( 1 );
 
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo( $user, [ 'allRevisions' => true ] );
@@ -1226,7 +1254,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 		$mockDb->expects( $this->never() )
 			->method( $this->anything() );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockUnrestrictedNonAnonUserWithId( 1 );
 
 		$this->setExpectedException( InvalidArgumentException::class, $expectedInExceptionMessage );
@@ -1268,7 +1296,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			)
 			->will( $this->returnValue( [] ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockUnrestrictedNonAnonUserWithId( 1 );
 
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo(
@@ -1310,7 +1338,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			)
 			->will( $this->returnValue( [] ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockUnrestrictedNonAnonUserWithId( 1 );
 
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo(
@@ -1338,7 +1366,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			)
 			->will( $this->returnValue( [] ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockUnrestrictedNonAnonUserWithId( 1 );
 		$otherUser = $this->getMockUnrestrictedNonAnonUserWithId( 2 );
 		$otherUser->expects( $this->once() )
@@ -1369,7 +1397,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 		$mockDb->expects( $this->never() )
 			->method( $this->anything() );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockUnrestrictedNonAnonUserWithId( 1 );
 		$otherUser = $this->getMockUnrestrictedNonAnonUserWithId( 2 );
 		$otherUser->expects( $this->once() )
@@ -1406,7 +1434,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 				] ),
 			] ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 		$user = $this->getMockNonAnonUserWithId( 1 );
 
 		$items = $queryService->getWatchedItemsForUser( $user );
@@ -1506,7 +1534,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			)
 			->will( $this->returnValue( [] ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 
 		$items = $queryService->getWatchedItemsForUser( $user, $options );
 		$this->assertEmpty( $items );
@@ -1603,7 +1631,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			)
 			->will( $this->returnCallback( function ( $a, $conj ) {
 				$sqlConj = $conj === LIST_AND ? ' AND ' : ' OR ';
-				return join( $sqlConj, array_map( function ( $s ) {
+				return implode( $sqlConj, array_map( function ( $s ) {
 					return '(' . $s . ')';
 				}, $a
 				) );
@@ -1619,7 +1647,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 			)
 			->will( $this->returnValue( [] ) );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 
 		$items = $queryService->getWatchedItemsForUser( $user, $options );
 		$this->assertEmpty( $items );
@@ -1657,7 +1685,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 		array $options,
 		$expectedInExceptionMessage
 	) {
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $this->getMockDb() ) );
+		$queryService = $this->newService( $this->getMockDb() );
 
 		$this->setExpectedException( InvalidArgumentException::class, $expectedInExceptionMessage );
 		$queryService->getWatchedItemsForUser( $this->getMockNonAnonUserWithId( 1 ), $options );
@@ -1669,7 +1697,7 @@ class WatchedItemQueryServiceUnitTest extends PHPUnit_Framework_TestCase {
 		$mockDb->expects( $this->never() )
 			->method( $this->anything() );
 
-		$queryService = new WatchedItemQueryService( $this->getMockLoadBalancer( $mockDb ) );
+		$queryService = $this->newService( $mockDb );
 
 		$items = $queryService->getWatchedItemsForUser( $this->getMockAnonUser() );
 		$this->assertEmpty( $items );

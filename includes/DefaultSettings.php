@@ -2255,7 +2255,7 @@ $wgCacheDirectory = false;
  *   - CACHE_NONE:       Do not cache
  *   - CACHE_DB:         Store cache objects in the DB
  *   - CACHE_MEMCACHED:  MemCached, must specify servers in $wgMemCachedServers
- *   - CACHE_ACCEL:      APC, APCU, XCache or WinCache
+ *   - CACHE_ACCEL:      APC, APCU or WinCache
  *   - (other):          A string may be used which identifies a cache
  *                       configuration in $wgObjectCaches.
  *
@@ -2333,7 +2333,6 @@ $wgObjectCaches = [
 
 	'apc' => [ 'class' => APCBagOStuff::class, 'reportDupes' => false ],
 	'apcu' => [ 'class' => APCUBagOStuff::class, 'reportDupes' => false ],
-	'xcache' => [ 'class' => XCacheBagOStuff::class, 'reportDupes' => false ],
 	'wincache' => [ 'class' => WinCacheBagOStuff::class, 'reportDupes' => false ],
 	'memcached-php' => [ 'class' => MemcachedPhpBagOStuff::class, 'loggroup' => 'memcached' ],
 	'memcached-pecl' => [ 'class' => MemcachedPeclBagOStuff::class, 'loggroup' => 'memcached' ],
@@ -3783,10 +3782,11 @@ $wgResourceLoaderValidateStaticJS = false;
  */
 $wgResourceLoaderLESSVars = [
 	/**
-	 * Minimum available screen width at which a device can be considered a tablet/desktop
+	 * Minimum available screen width at which a device can be considered a tablet
 	 * The number is currently based on the device width of a Samsung Galaxy S5 mini and is low
 	 * enough to cover iPad (768px). Number is prone to change with new information.
 	 * @since 1.27
+	 * @deprecated 1.31 Use mediawiki.ui/variables instead
 	 */
 	'deviceWidthTablet' => '720px',
 ];
@@ -5127,8 +5127,6 @@ $wgGroupPermissions['*']['edit'] = true;
 $wgGroupPermissions['*']['createpage'] = true;
 $wgGroupPermissions['*']['createtalk'] = true;
 $wgGroupPermissions['*']['writeapi'] = true;
-$wgGroupPermissions['*']['editmyusercss'] = true;
-$wgGroupPermissions['*']['editmyuserjs'] = true;
 $wgGroupPermissions['*']['viewmywatchlist'] = true;
 $wgGroupPermissions['*']['editmywatchlist'] = true;
 $wgGroupPermissions['*']['viewmyprivateinfo'] = true;
@@ -5151,6 +5149,8 @@ $wgGroupPermissions['user']['upload'] = true;
 $wgGroupPermissions['user']['reupload'] = true;
 $wgGroupPermissions['user']['reupload-shared'] = true;
 $wgGroupPermissions['user']['minoredit'] = true;
+$wgGroupPermissions['user']['editmyusercss'] = true;
+$wgGroupPermissions['user']['editmyuserjs'] = true;
 $wgGroupPermissions['user']['purge'] = true;
 $wgGroupPermissions['user']['sendemail'] = true;
 $wgGroupPermissions['user']['applychangetags'] = true;
@@ -5813,6 +5813,7 @@ $wgGrantPermissions['editpage']['changetags'] = true;
 $wgGrantPermissions['editprotected'] = $wgGrantPermissions['editpage'];
 $wgGrantPermissions['editprotected']['editprotected'] = true;
 
+// FIXME: Rename editmycssjs to editmyconfig
 $wgGrantPermissions['editmycssjs'] = $wgGrantPermissions['editpage'];
 $wgGrantPermissions['editmycssjs']['editmyusercss'] = true;
 $wgGrantPermissions['editmycssjs']['editmyuserjs'] = true;
@@ -6276,6 +6277,12 @@ $wgShowDBErrorBacktrace = false;
 $wgLogExceptionBacktrace = true;
 
 /**
+ * If true, the MediaWiki error handler passes errors/warnings to the default error handler
+ * after logging them. The setting is ignored when the track_errors php.ini flag is true.
+ */
+$wgPropagateErrors = true;
+
+/**
  * Expose backend server host names through the API and various HTML comments
  */
 $wgShowHostnames = false;
@@ -6667,9 +6674,9 @@ $wgGitBin = '/usr/bin/git';
  */
 $wgGitRepositoryViewers = [
 	'https://(?:[a-z0-9_]+@)?gerrit.wikimedia.org/r/(?:p/)?(.*)' =>
-		'https://phabricator.wikimedia.org/r/revision/%R;%H',
+		'https://gerrit.wikimedia.org/g/%R/+/%H',
 	'ssh://(?:[a-z0-9_]+@)?gerrit.wikimedia.org:29418/(.*)' =>
-		'https://phabricator.wikimedia.org/r/revision/%R;%H',
+		'https://gerrit.wikimedia.org/g/%R/+/%H',
 ];
 
 /** @} */ # End of maintenance }
@@ -6946,11 +6953,6 @@ $wgShowUpdatedMarker = true;
  * pages like page history, Special:Recentchanges, etc.
  */
 $wgDisableAnonTalk = false;
-
-/**
- * Enable filtering of categories in Recentchanges
- */
-$wgAllowCategorizedRecentChanges = false;
 
 /**
  * Allow filtering by change tag in recentchanges, history, etc
@@ -7453,6 +7455,7 @@ $wgJobClasses = [
 	'clearUserWatchlist' => ClearUserWatchlistJob::class,
 	'cdnPurge' => CdnPurgeJob::class,
 	'enqueue' => EnqueueJob::class, // local queue for multi-DC setups
+	'userGroupExpiry' => UserGroupExpiryJob::class,
 	'null' => NullJob::class,
 ];
 
@@ -8826,6 +8829,13 @@ $wgInterwikiPrefixDisplayTypes = [];
  * @var int One of the MIGRATION_* constants
  */
 $wgCommentTableSchemaMigrationStage = MIGRATION_OLD;
+
+/**
+ * Actor table schema migration stage.
+ * @since 1.31
+ * @var int One of the MIGRATION_* constants
+ */
+$wgActorTableSchemaMigrationStage = MIGRATION_OLD;
 
 /**
  * For really cool vim folding this needs to be at the end:

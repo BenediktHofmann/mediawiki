@@ -24,6 +24,7 @@
 use MediaWiki\Logger\LoggerFactory;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Class to represent a local file in the wiki's own database
@@ -101,11 +102,8 @@ class LocalFile extends File {
 	/** @var string Upload timestamp */
 	private $timestamp;
 
-	/** @var int User ID of uploader */
+	/** @var User Uploader */
 	private $user;
-
-	/** @var string User name of uploader */
-	private $user_text;
 
 	/** @var string Description of current revision of the file */
 	private $description;
@@ -200,7 +198,19 @@ class LocalFile extends File {
 	 * @return array
 	 */
 	static function selectFields() {
+		global $wgActorTableSchemaMigrationStage;
+
 		wfDeprecated( __METHOD__, '1.31' );
+		if ( $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH ) {
+			// If code is using this instead of self::getQueryInfo(), there's a
+			// decent chance it's going to try to directly access
+			// $row->img_user or $row->img_user_text and we can't give it
+			// useful values here once those aren't being written anymore.
+			throw new BadMethodCallException(
+				'Cannot use ' . __METHOD__ . ' when $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH'
+			);
+		}
+
 		return [
 			'img_name',
 			'img_size',
@@ -213,9 +223,10 @@ class LocalFile extends File {
 			'img_minor_mime',
 			'img_user',
 			'img_user_text',
+			'img_actor' => $wgActorTableSchemaMigrationStage > MIGRATION_OLD ? 'img_actor' : null,
 			'img_timestamp',
 			'img_sha1',
-		] + CommentStore::newKey( 'img_description' )->getFields();
+		] + CommentStore::getStore()->getFields( 'img_description' );
 	}
 
 	/**
@@ -230,9 +241,10 @@ class LocalFile extends File {
 	 *   - joins: (array) to include in the `$join_conds` to `IDatabase->select()`
 	 */
 	public static function getQueryInfo( array $options = [] ) {
-		$commentQuery = CommentStore::newKey( 'img_description' )->getJoin();
+		$commentQuery = CommentStore::getStore()->getJoin( 'img_description' );
+		$actorQuery = ActorMigration::newMigration()->getJoin( 'img_user' );
 		$ret = [
-			'tables' => [ 'image' ] + $commentQuery['tables'],
+			'tables' => [ 'image' ] + $commentQuery['tables'] + $actorQuery['tables'],
 			'fields' => [
 				'img_name',
 				'img_size',
@@ -243,12 +255,10 @@ class LocalFile extends File {
 				'img_media_type',
 				'img_major_mime',
 				'img_minor_mime',
-				'img_user',
-				'img_user_text',
 				'img_timestamp',
 				'img_sha1',
-			] + $commentQuery['fields'],
-			'joins' => $commentQuery['joins'],
+			] + $commentQuery['fields'] + $actorQuery['fields'],
+			'joins' => $commentQuery['joins'] + $actorQuery['joins'],
 		];
 
 		if ( in_array( 'omit-nonlazy', $options, true ) ) {
@@ -329,6 +339,10 @@ class LocalFile extends File {
 						$cacheVal[$field] = $this->$field;
 					}
 				}
+				$cacheVal['user'] = $this->user ? $this->user->getId() : 0;
+				$cacheVal['user_text'] = $this->user ? $this->user->getName() : '';
+				$cacheVal['actor'] = $this->user ? $this->user->getActorId() : null;
+
 				// Strip off excessive entries from the subset of fields that can become large.
 				// If the cache value gets to large it will not fit in memcached and nothing will
 				// get cached at all, causing master queries for any file access.
@@ -406,8 +420,7 @@ class LocalFile extends File {
 		// and self::loadFromCache() for the caching, and self::setProps() for
 		// populating the object from an array of data.
 		return [ 'size', 'width', 'height', 'bits', 'media_type',
-			'major_mime', 'minor_mime', 'metadata', 'timestamp', 'sha1', 'user',
-			'user_text', 'description' ];
+			'major_mime', 'minor_mime', 'metadata', 'timestamp', 'sha1', 'description' ];
 	}
 
 	/**
@@ -566,8 +579,15 @@ class LocalFile extends File {
 	function decodeRow( $row, $prefix = 'img_' ) {
 		$decoded = $this->unprefixRow( $row, $prefix );
 
-		$decoded['description'] = CommentStore::newKey( 'description' )
-			->getComment( (object)$decoded )->text;
+		$decoded['description'] = CommentStore::getStore()
+			->getComment( 'description', (object)$decoded )->text;
+
+		$decoded['user'] = User::newFromAnyId(
+			isset( $decoded['user'] ) ? $decoded['user'] : null,
+			isset( $decoded['user_text'] ) ? $decoded['user_text'] : null,
+			isset( $decoded['actor'] ) ? $decoded['actor'] : null
+		);
+		unset( $decoded['user_text'], $decoded['actor'] );
 
 		$decoded['timestamp'] = wfTimestamp( TS_MW, $decoded['timestamp'] );
 
@@ -750,6 +770,14 @@ class LocalFile extends File {
 			}
 		}
 
+		if ( isset( $info['user'] ) || isset( $info['user_text'] ) || isset( $info['actor'] ) ) {
+			$this->user = User::newFromAnyId(
+				isset( $info['user'] ) ? $info['user'] : null,
+				isset( $info['user_text'] ) ? $info['user_text'] : null,
+				isset( $info['actor'] ) ? $info['actor'] : null
+			);
+		}
+
 		// Fix up mime fields
 		if ( isset( $info['major_mime'] ) ) {
 			$this->mime = "{$info['major_mime']}/{$info['minor_mime']}";
@@ -844,19 +872,24 @@ class LocalFile extends File {
 	}
 
 	/**
-	 * Returns ID or name of user who uploaded the file
+	 * Returns user who uploaded the file
 	 *
-	 * @param string $type 'text' or 'id'
-	 * @return int|string
+	 * @param string $type 'text', 'id', or 'object'
+	 * @return int|string|User
+	 * @since 1.31 Added 'object'
 	 */
 	function getUser( $type = 'text' ) {
 		$this->load();
 
-		if ( $type == 'text' ) {
-			return $this->user_text;
-		} else { // id
-			return (int)$this->user;
+		if ( $type === 'object' ) {
+			return $this->user;
+		} elseif ( $type === 'text' ) {
+			return $this->user->getName();
+		} elseif ( $type === 'id' ) {
+			return $this->user->getId();
 		}
+
+		throw new MWException( "Unknown type '$type'." );
 	}
 
 	/**
@@ -1275,6 +1308,10 @@ class LocalFile extends File {
 	) {
 		if ( $this->getRepo()->getReadOnlyReason() !== false ) {
 			return $this->readOnlyFatalStatus();
+		} elseif ( MediaWikiServices::getInstance()->getRevisionStore()->isReadOnly() ) {
+			// Check this in advance to avoid writing to FileBackend and the file tables,
+			// only to fail on insert the revision due to the text store being unavailable.
+			return $this->readOnlyFatalStatus();
 		}
 
 		$srcPath = ( $src instanceof FSFile ) ? $src->getPath() : $src;
@@ -1292,7 +1329,7 @@ class LocalFile extends File {
 		$options = [];
 		$handler = MediaHandler::getHandler( $props['mime'] );
 		if ( $handler ) {
-			$metadata = MediaWiki\quietCall( 'unserialize', $props['metadata'] );
+			$metadata = Wikimedia\quietCall( 'unserialize', $props['metadata'] );
 
 			if ( !is_array( $metadata ) ) {
 				$metadata = [];
@@ -1387,7 +1424,7 @@ class LocalFile extends File {
 	function recordUpload2(
 		$oldver, $comment, $pageText, $props = false, $timestamp = false, $user = null, $tags = []
 	) {
-		global $wgCommentTableSchemaMigrationStage;
+		global $wgCommentTableSchemaMigrationStage, $wgActorTableSchemaMigrationStage;
 
 		if ( is_null( $user ) ) {
 			global $wgUser;
@@ -1409,6 +1446,7 @@ class LocalFile extends File {
 		$props['description'] = $comment;
 		$props['user'] = $user->getId();
 		$props['user_text'] = $user->getName();
+		$props['actor'] = $user->getActorId( $dbw );
 		$props['timestamp'] = wfTimestamp( TS_MW, $timestamp ); // DB -> TS_MW
 		$this->setProps( $props );
 
@@ -1424,9 +1462,11 @@ class LocalFile extends File {
 		# Test to see if the row exists using INSERT IGNORE
 		# This avoids race conditions by locking the row until the commit, and also
 		# doesn't deadlock. SELECT FOR UPDATE causes a deadlock for every race condition.
-		$commentStore = new CommentStore( 'img_description' );
+		$commentStore = CommentStore::getStore();
 		list( $commentFields, $commentCallback ) =
-			$commentStore->insertWithTempTable( $dbw, $comment );
+			$commentStore->insertWithTempTable( $dbw, 'img_description', $comment );
+		$actorMigration = ActorMigration::newMigration();
+		$actorFields = $actorMigration->getInsertValues( $dbw, 'img_user', $user );
 		$dbw->insert( 'image',
 			[
 				'img_name' => $this->getName(),
@@ -1438,11 +1478,9 @@ class LocalFile extends File {
 				'img_major_mime' => $this->major_mime,
 				'img_minor_mime' => $this->minor_mime,
 				'img_timestamp' => $timestamp,
-				'img_user' => $user->getId(),
-				'img_user_text' => $user->getName(),
 				'img_metadata' => $dbw->encodeBlob( $this->metadata ),
 				'img_sha1' => $this->sha1
-			] + $commentFields,
+			] + $commentFields + $actorFields,
 			__METHOD__,
 			'IGNORE'
 		);
@@ -1485,8 +1523,6 @@ class LocalFile extends File {
 				'oi_height' => 'img_height',
 				'oi_bits' => 'img_bits',
 				'oi_timestamp' => 'img_timestamp',
-				'oi_user' => 'img_user',
-				'oi_user_text' => 'img_user_text',
 				'oi_metadata' => 'img_metadata',
 				'oi_media_type' => 'img_media_type',
 				'oi_major_mime' => 'img_major_mime',
@@ -1522,8 +1558,41 @@ class LocalFile extends File {
 					[ 'image_comment_temp' => [ 'LEFT JOIN', [ 'imgcomment_name = img_name' ] ] ]
 				);
 				foreach ( $res as $row ) {
-					list( , $callback ) = $commentStore->insertWithTempTable( $dbw, $row->img_description );
+					list( , $callback ) = $commentStore->insertWithTempTable(
+						$dbw, 'img_description', $row->img_description
+					);
 					$callback( $row->img_name );
+				}
+			}
+
+			if ( $wgActorTableSchemaMigrationStage <= MIGRATION_WRITE_BOTH ) {
+				$fields['oi_user'] = 'img_user';
+				$fields['oi_user_text'] = 'img_user_text';
+			}
+			if ( $wgActorTableSchemaMigrationStage >= MIGRATION_WRITE_BOTH ) {
+				$fields['oi_actor'] = 'img_actor';
+			}
+
+			if ( $wgActorTableSchemaMigrationStage !== MIGRATION_OLD &&
+				$wgActorTableSchemaMigrationStage !== MIGRATION_NEW
+			) {
+				// Upgrade any rows that are still old-style. Otherwise an upgrade
+				// might be missed if a deletion happens while the migration script
+				// is running.
+				$res = $dbw->select(
+					[ 'image' ],
+					[ 'img_name', 'img_user', 'img_user_text' ],
+					[ 'img_name' => $this->getName(), 'img_actor' => 0 ],
+					__METHOD__
+				);
+				foreach ( $res as $row ) {
+					$actorId = User::newFromAnyId( $row->img_user, $row->img_user_text, null )->getActorId( $dbw );
+					$dbw->update(
+						'image',
+						[ 'img_actor' => $actorId ],
+						[ 'img_name' => $row->img_name, 'img_actor' => 0 ],
+						__METHOD__
+					);
 				}
 			}
 
@@ -1547,11 +1616,9 @@ class LocalFile extends File {
 					'img_major_mime' => $this->major_mime,
 					'img_minor_mime' => $this->minor_mime,
 					'img_timestamp' => $timestamp,
-					'img_user' => $user->getId(),
-					'img_user_text' => $user->getName(),
 					'img_metadata' => $dbw->encodeBlob( $this->metadata ),
 					'img_sha1' => $this->sha1
-				] + $commentFields,
+				] + $commentFields + $actorFields,
 				[ 'img_name' => $this->getName() ],
 				__METHOD__
 			);
@@ -2398,15 +2465,13 @@ class LocalFileDeleteBatch {
 	}
 
 	protected function doDBInserts() {
-		global $wgCommentTableSchemaMigrationStage;
+		global $wgCommentTableSchemaMigrationStage, $wgActorTableSchemaMigrationStage;
 
 		$now = time();
 		$dbw = $this->file->repo->getMasterDB();
 
-		$commentStoreImgDesc = new CommentStore( 'img_description' );
-		$commentStoreOiDesc = new CommentStore( 'oi_description' );
-		$commentStoreFaDesc = new CommentStore( 'fa_description' );
-		$commentStoreFaReason = new CommentStore( 'fa_deleted_reason' );
+		$commentStore = CommentStore::getStore();
+		$actorMigration = ActorMigration::newMigration();
 
 		$encTimestamp = $dbw->addQuotes( $dbw->timestamp( $now ) );
 		$encUserId = $dbw->addQuotes( $this->user->getId() );
@@ -2445,8 +2510,6 @@ class LocalFileDeleteBatch {
 				'fa_media_type' => 'img_media_type',
 				'fa_major_mime' => 'img_major_mime',
 				'fa_minor_mime' => 'img_minor_mime',
-				'fa_user' => 'img_user',
-				'fa_user_text' => 'img_user_text',
 				'fa_timestamp' => 'img_timestamp',
 				'fa_sha1' => 'img_sha1'
 			];
@@ -2454,7 +2517,7 @@ class LocalFileDeleteBatch {
 
 			$fields += array_map(
 				[ $dbw, 'addQuotes' ],
-				$commentStoreFaReason->insert( $dbw, $this->reason )
+				$commentStore->insert( $dbw, 'fa_deleted_reason', $this->reason )
 			);
 
 			if ( $wgCommentTableSchemaMigrationStage <= MIGRATION_WRITE_BOTH ) {
@@ -2484,8 +2547,41 @@ class LocalFileDeleteBatch {
 					[ 'image_comment_temp' => [ 'LEFT JOIN', [ 'imgcomment_name = img_name' ] ] ]
 				);
 				foreach ( $res as $row ) {
-					list( , $callback ) = $commentStoreImgDesc->insertWithTempTable( $dbw, $row->img_description );
+					list( , $callback ) = $commentStore->insertWithTempTable(
+						$dbw, 'img_description', $row->img_description
+					);
 					$callback( $row->img_name );
+				}
+			}
+
+			if ( $wgActorTableSchemaMigrationStage <= MIGRATION_WRITE_BOTH ) {
+				$fields['fa_user'] = 'img_user';
+				$fields['fa_user_text'] = 'img_user_text';
+			}
+			if ( $wgActorTableSchemaMigrationStage >= MIGRATION_WRITE_BOTH ) {
+				$fields['fa_actor'] = 'img_actor';
+			}
+
+			if ( $wgActorTableSchemaMigrationStage !== MIGRATION_OLD &&
+				$wgActorTableSchemaMigrationStage !== MIGRATION_NEW
+			) {
+				// Upgrade any rows that are still old-style. Otherwise an upgrade
+				// might be missed if a deletion happens while the migration script
+				// is running.
+				$res = $dbw->select(
+					[ 'image' ],
+					[ 'img_name', 'img_user', 'img_user_text' ],
+					[ 'img_name' => $this->file->getName(), 'img_actor' => 0 ],
+					__METHOD__
+				);
+				foreach ( $res as $row ) {
+					$actorId = User::newFromAnyId( $row->img_user, $row->img_user_text, null )->getActorId( $dbw );
+					$dbw->update(
+						'image',
+						[ 'img_actor' => $actorId ],
+						[ 'img_name' => $row->img_name, 'img_actor' => 0 ],
+						__METHOD__
+					);
 				}
 			}
 
@@ -2508,9 +2604,10 @@ class LocalFileDeleteBatch {
 			);
 			$rowsInsert = [];
 			if ( $res->numRows() ) {
-				$reason = $commentStoreFaReason->createComment( $dbw, $this->reason );
+				$reason = $commentStore->createComment( $dbw, $this->reason );
 				foreach ( $res as $row ) {
-					$comment = $commentStoreOiDesc->getComment( $row );
+					$comment = $commentStore->getComment( 'oi_description', $row );
+					$user = User::newFromAnyId( $row->oi_user, $row->oi_user_text, $row->oi_actor );
 					$rowsInsert[] = [
 						// Deletion-specific fields
 						'fa_storage_group' => 'deleted',
@@ -2531,12 +2628,11 @@ class LocalFileDeleteBatch {
 						'fa_media_type' => $row->oi_media_type,
 						'fa_major_mime' => $row->oi_major_mime,
 						'fa_minor_mime' => $row->oi_minor_mime,
-						'fa_user' => $row->oi_user,
-						'fa_user_text' => $row->oi_user_text,
 						'fa_timestamp' => $row->oi_timestamp,
 						'fa_sha1' => $row->oi_sha1
-					] + $commentStoreFaReason->insert( $dbw, $reason )
-					+ $commentStoreFaDesc->insert( $dbw, $comment );
+					] + $commentStore->insert( $dbw, 'fa_deleted_reason', $reason )
+					+ $commentStore->insert( $dbw, 'fa_description', $comment )
+					+ $actorMigration->getInsertValues( $dbw, 'fa_user', $user );
 				}
 			}
 
@@ -2734,9 +2830,8 @@ class LocalFileRestoreBatch {
 
 		$dbw = $this->file->repo->getMasterDB();
 
-		$commentStoreImgDesc = new CommentStore( 'img_description' );
-		$commentStoreOiDesc = new CommentStore( 'oi_description' );
-		$commentStoreFaDesc = new CommentStore( 'fa_description' );
+		$commentStore = CommentStore::getStore();
+		$actorMigration = ActorMigration::newMigration();
 
 		$status = $this->file->repo->newGood();
 
@@ -2824,12 +2919,14 @@ class LocalFileRestoreBatch {
 				];
 			}
 
-			$comment = $commentStoreFaDesc->getComment( $row );
+			$comment = $commentStore->getComment( 'fa_description', $row );
+			$user = User::newFromAnyId( $row->fa_user, $row->fa_user_text, $row->fa_actor );
 			if ( $first && !$exists ) {
 				// This revision will be published as the new current version
 				$destRel = $this->file->getRel();
 				list( $commentFields, $commentCallback ) =
-					$commentStoreImgDesc->insertWithTempTable( $dbw, $comment );
+					$commentStore->insertWithTempTable( $dbw, 'img_description', $comment );
+				$actorFields = $actorMigration->getInsertValues( $dbw, 'img_user', $user );
 				$insertCurrent = [
 					'img_name' => $row->fa_name,
 					'img_size' => $row->fa_size,
@@ -2840,11 +2937,9 @@ class LocalFileRestoreBatch {
 					'img_media_type' => $props['media_type'],
 					'img_major_mime' => $props['major_mime'],
 					'img_minor_mime' => $props['minor_mime'],
-					'img_user' => $row->fa_user,
-					'img_user_text' => $row->fa_user_text,
 					'img_timestamp' => $row->fa_timestamp,
 					'img_sha1' => $sha1
-				] + $commentFields;
+				] + $commentFields + $actorFields;
 
 				// The live (current) version cannot be hidden!
 				if ( !$this->unsuppress && $row->fa_deleted ) {
@@ -2876,8 +2971,6 @@ class LocalFileRestoreBatch {
 					'oi_width' => $row->fa_width,
 					'oi_height' => $row->fa_height,
 					'oi_bits' => $row->fa_bits,
-					'oi_user' => $row->fa_user,
-					'oi_user_text' => $row->fa_user_text,
 					'oi_timestamp' => $row->fa_timestamp,
 					'oi_metadata' => $props['metadata'],
 					'oi_media_type' => $props['media_type'],
@@ -2885,7 +2978,8 @@ class LocalFileRestoreBatch {
 					'oi_minor_mime' => $props['minor_mime'],
 					'oi_deleted' => $this->unsuppress ? 0 : $row->fa_deleted,
 					'oi_sha1' => $sha1
-				] + $commentStoreOiDesc->insert( $dbw, $comment );
+				] + $commentStore->insert( $dbw, 'oi_description', $comment )
+				+ $actorMigration->getInsertValues( $dbw, 'oi_user', $user );
 			}
 
 			$deleteIds[] = $row->fa_id;

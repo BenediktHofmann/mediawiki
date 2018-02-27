@@ -2,10 +2,13 @@
 
 namespace MediaWiki\Auth;
 
+use Config;
 use MediaWiki\Session\SessionInfo;
 use MediaWiki\Session\UserInfo;
+use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use StatusValue;
+use WebRequest;
 use Wikimedia\ScopedCallback;
 use Wikimedia\TestingAccessWrapper;
 
@@ -19,7 +22,7 @@ class AuthManagerTest extends \MediaWikiTestCase {
 	protected $request;
 	/** @var Config */
 	protected $config;
-	/** @var \\Psr\\Log\\LoggerInterface */
+	/** @var LoggerInterface */
 	protected $logger;
 
 	protected $preauthMocks = [];
@@ -1433,6 +1436,7 @@ class AuthManagerTest extends \MediaWikiTestCase {
 		$blockOptions = [
 			'address' => 'UTBlockee',
 			'user' => $user->getID(),
+			'by' => $this->getTestSysop()->getUser()->getId(),
 			'reason' => __METHOD__,
 			'expiry' => time() + 100500,
 			'createAccount' => true,
@@ -1445,6 +1449,7 @@ class AuthManagerTest extends \MediaWikiTestCase {
 
 		$blockOptions = [
 			'address' => '127.0.0.0/24',
+			'by' => $this->getTestSysop()->getUser()->getId(),
 			'reason' => __METHOD__,
 			'expiry' => time() + 100500,
 			'createAccount' => true,

@@ -170,6 +170,8 @@ class MWExceptionHandler {
 	public static function handleError(
 		$level, $message, $file = null, $line = null
 	) {
+		global $wgPropagateErrors;
+
 		if ( in_array( $level, self::$fatalErrorTypes ) ) {
 			return call_user_func_array(
 				'MWExceptionHandler::handleFatalError', func_get_args()
@@ -213,9 +215,10 @@ class MWExceptionHandler {
 		$e = new ErrorException( "PHP $levelName: $message", 0, $level, $file, $line );
 		self::logError( $e, 'error', $severity );
 
-		// This handler is for logging only. Return false will instruct PHP
-		// to continue regular handling.
-		return false;
+		// If $wgPropagateErrors is true return false so PHP shows/logs the error normally.
+		// Ignore $wgPropagateErrors if the error should break execution, or track_errors is set
+		// (which means someone is counting on regular PHP error handling behavior).
+		return !( $wgPropagateErrors || $level == E_RECOVERABLE_ERROR || ini_get( 'track_errors' ) );
 	}
 
 	/**
@@ -661,7 +664,7 @@ TXT;
 		$catcher = self::CAUGHT_BY_HANDLER;
 		// The set_error_handler callback is independent from error_reporting.
 		// Filter out unwanted errors manually (e.g. when
-		// MediaWiki\suppressWarnings is active).
+		// Wikimedia\suppressWarnings is active).
 		$suppressed = ( error_reporting() & $e->getSeverity() ) === 0;
 		if ( !$suppressed ) {
 			$logger = LoggerFactory::getInstance( $channel );

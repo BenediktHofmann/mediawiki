@@ -962,11 +962,11 @@ interface IDatabase {
 	 * Example usage:
 	 * @code
 	 *     $sql = $db->makeList( [
-	 *         'rev_user' => $id,
+	 *         'rev_page' => $id,
 	 *         $db->makeList( [ 'rev_minor' => 1, 'rev_len' < 500 ], $db::LIST_OR ] )
 	 *     ], $db::LIST_AND );
 	 * @endcode
-	 * This would set $sql to "rev_user = '$id' AND (rev_minor = '1' OR rev_len < '500')"
+	 * This would set $sql to "rev_page = '$id' AND (rev_minor = '1' OR rev_len < '500')"
 	 *
 	 * @param array $a Containing the data
 	 * @param int $mode IDatabase class constant:
@@ -1776,7 +1776,7 @@ interface IDatabase {
 	public function setSchemaVars( $vars );
 
 	/**
-	 * Check to see if a named lock is available (non-blocking)
+	 * Check to see if a named lock is not locked by any thread (non-blocking)
 	 *
 	 * @param string $lockName Name of lock to poll
 	 * @param string $method Name of method calling us

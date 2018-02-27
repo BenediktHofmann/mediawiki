@@ -24,6 +24,10 @@ production.
 * $wgFragmentMode is now set to [ 'legacy', 'html5' ] by default. This is a first step of
   migration to human-readable section IDs that will later result in 'html5' being the
   default mode.
+* CACHE_ACCEL now only supports APC(u) or WinCache. XCache support was removed
+  as upstream is inactive and has no plans to move to PHP 7.
+* The old CategorizedRecentChanges feature, including its related configuration
+  option $wgAllowCategorizedRecentChanges, has been removed.
 
 === New features in 1.31 ===
 * Wikimedia\Rdbms\IDatabase->select() and similar methods now support
@@ -44,22 +48,40 @@ production.
   initial page text for file uploads.
 * (T181651) The info page for File pages now displays the file's base-16 SHA1
   hash value in the table of basic information.
+* Style tags with a 'data-mw-deduplicate' attribute will be deduplicated as a
+  ParserOutput::getText() post-cache transformation. This may be disabled by
+  passing 'deduplicateStyles' => false to that method.
+* The identity of the logged-in or IP "actor" for logged actions is being moved
+  into a new actor table, with the rows in tables such as revision and logging
+  referring to the actor ID instead of storing the user ID and name/IP in
+  every row.
+  * This is currently gated by $wgActorTableSchemaMigrationStage. Most wikis
+    can set this to MIGRATION_NEW and run maintenance/migrateActors.php as
+    soon as any necessary extensions are updated.
+  * Most code accessing rows for logged actions from the database should use
+    the relevant getQueryInfo() methods to get the information needed to build
+    the SQL query. The ActorMigration class may also be used to get feature-flagged
+    information needed to access actor-related fields during the migration
+    period.
 
 === External library changes in 1.31 ===
 
 ==== Upgraded external libraries ====
 * Updated jquery.chosen from v0.9.14 to v1.8.2.
 * Updated composer/spdx-licenses from 1.1.4 to
-  1.2.0 (development dependency).
+  1.3.0 (development dependency).
 * Updated nikic/php-parser from 2.1.0 to 3.1.3
   (development dependency).
 * Updated wikimedia/ip-set from 1.1.0 to 1.2.0.
 * Updated wikimedia/relpath from 2.0.0 to 2.1.1.
 * Updated wikimedia/running-stat from 1.1.0 to 1.2.0.
 * Updated wikimedia/wrappedstring from 2.2.0 to 2.3.0.
+* Updated mediawiki/at-ease from 1.1.0 to 1.2.0.
+* Updated wikimedia/php-session-serializer from 1.0.4 to 1.0.5.
 * …
 
 ==== New external libraries ====
+* Added wikimedia/object-factory 1.0.0
 * …
 
 ==== Removed and replaced external libraries ====
@@ -90,8 +112,13 @@ changes to languages because of Phabricator reports.
 
 * (T180052) Mirandese (mwl) now supports gendered NS_USER/NS_USER_TALK namespaces.
 * (T182305) New language support: Nyungar (nys).
+* (T186359) New language support: Siberian Tatar [cебертатар] (sty).
+* (T186635) New language support: Guianan Creole (gcr).
+* (T186647) New language support: Kumyk [къумукъ] (kum).
+* (T187750) New language support: Spanish formal address (es-formal).
 
 === Other changes in 1.31 ===
+* Browser support for Internet Explorer 10 was lowered from Grade A to Grade C.
 * Introducing multi-content-revision capability into the storage layer. For details,
   see <https://www.mediawiki.org/wiki/Requests_for_comment/Multi-Content_Revisions>.
 * The Revision class was deprecated in favor of RevisionStore, BlobStore, and
@@ -194,6 +221,51 @@ changes to languages because of Phabricator reports.
   Setting template variables by reference allowed violating the principle of data being
   immutable once added to the skin template. In practice, this method was not being
   used for that. Rather, setRef() existed as memory optimisation for PHP 4.
+* QuickTemplate::setTranslator() was deprecated in favour of Skin::msg() parameters.
+* MediaWikiI18N::set() was deprecated in favour of Skin::msg() parameters.
+* MediaWikiI18N::translate() was deprecated in favour of Skin::msg() or wfMessage().
+* Passing false to ParserOptions::setWrapOutputClass() is deprecated. Use the
+  'unwrap' transform to ParserOutput::getText() instead.
+* ParserOutput objects generated using a non-default value for
+  ParserOptions::setWrapOutputClass() can no longer be added to the parser
+  cache.
+* The following deprecated methods from the OutputPage class have been removed:
+  * OutputPage::addExtensionStyle(); deprecated in 1.27
+  * OutputPage::getExtStyle(); deprecated in 1.27
+  * OutputPage::setETag(); deprecated in 1.28 (obsolete no-op)
+  * OutputPage::setSquidMaxage(); deprecated in 1.27
+  * OutputPage::readOnlyPage(); deprecated in 1.25
+  * OutputPage::rateLimited(); deprecated in 1.25
+  * Additionally, the protected OutputPage::$mExtStyles array, only accessed through
+    the above and with no known uses, was removed.
+* The no-op method Skin::showIPinHeader(), deprecated in 1.27, was removed.
+* \ObjectFactory (no namespace) is deprecated, the namespaced \Wikimedia\ObjectFactory
+  from the wikimedia/object-factory library should be used instead.
+* CommentStore::newKey is deprecated. Get an instance from MediaWikiServices instead.
+* The following CommentStore methods have had their signatures changed to introduce a $key parameter,
+  usage of the methods on instances retrieved from CommentStore::newKey will remain unchanged but deprecated:
+  * CommentStore::getFields
+  * CommentStore::getJoin
+  * CommentStore::getComment
+  * CommentStore::getCommentLegacy
+  * CommentStore::insert
+  * CommentStore::insertWithTemplate
+* The following methods in Title have been renamed, and the old ones are deprecated:
+  * Title::getSkinFromCssJsSubpage – use ::getSkinFromConfigSubpage
+  * Title::isCssOrJsPage – use ::isSiteConfigPage
+  * Title::isCssJsSubpage – use ::isUserConfigPage
+  * Title::isCssSubpage – use ::isUserCssConfigPage
+  * Title::isJsSubpage – use ::isUserJsConfigPage
+* The following variables and method in EditPage, deprecated in MediaWiki 1.30, were removed:
+  * $isCssJsSubpage — use ::isUserConfigPage()
+  * $isCssSubpage — use ::isUserCssConfigPage()
+  * $isJsSubpage — use ::isUserJsConfigPage()
+  * $isWrongCaseCssJsPage – use ::isWrongCaseUserConfigPage()
+* The method ResourceLoaderModule::getPosition(), deprecated in 1.29, has been removed.
+* The DeferredStringifier class is deprecated, use Message::listParam() instead.
+* The type string for the parameter $lang of DateFormatter::getInstance is
+  deprecated.
+* The global functions wfProfileIn and wfProfileOut, deprecated in 1.25, have been removed.
 
 == Compatibility ==
 MediaWiki 1.31 requires PHP 5.5.9 or later. Although HHVM 3.18.5 or later is supported,

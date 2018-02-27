@@ -1,7 +1,49 @@
-/**
+/*!
  * These plugins provide extra functionality for interaction with textareas.
+ *
+ * - encapsulateSelection: Ported from skins/common/edit.js by Trevor Parscal
+ *   © 2009 Wikimedia Foundation (GPLv2) - http://www.wikimedia.org
+ * - getCaretPosition, scrollToCaretPosition: Ported from Wikia's LinkSuggest extension
+ *   https://github.com/Wikia/app/blob/c0cd8b763/extensions/wikia/LinkSuggest/js/jquery.wikia.linksuggest.js
+ *   © 2010 Inez Korczyński (korczynski@gmail.com) & Jesús Martínez Novo (martineznovo@gmail.com) (GPLv2)
+ */
+
+/**
+ * @class jQuery.plugin.textSelection
+ *
+ * Do things to the selection in a `<textarea>`, or a textarea-like editable element.
+ *
+ *     var $textbox = $( '#wpTextbox1' );
+ *     $textbox.textSelection( 'setContents', 'This is bold!' );
+ *     $textbox.textSelection( 'setSelection', { start: 8, end: 12 } );
+ *     $textbox.textSelection( 'encapsulateSelection', { pre: '<b>', post: '</b>' } );
+ *     // Result: Textbox contains 'This is <b>bold</b>!', with cursor before the '!'
  */
 ( function ( $ ) {
+	/**
+	 * Do things to the selection in a `<textarea>`, or a textarea-like editable element.
+	 *
+	 *     var $textbox = $( '#wpTextbox1' );
+	 *     $textbox.textSelection( 'setContents', 'This is bold!' );
+	 *     $textbox.textSelection( 'setSelection', { start: 8, end: 12 } );
+	 *     $textbox.textSelection( 'encapsulateSelection', { pre: '<b>', post: '</b>' } );
+	 *     // Result: Textbox contains 'This is <b>bold</b>!', with cursor before the '!'
+	 *
+	 * @param {string} command Command to execute, one of:
+	 *
+	 *  - {@link jQuery.plugin.textSelection#getContents getContents}
+	 *  - {@link jQuery.plugin.textSelection#setContents setContents}
+	 *  - {@link jQuery.plugin.textSelection#getSelection getSelection}
+	 *  - {@link jQuery.plugin.textSelection#replaceSelection replaceSelection}
+	 *  - {@link jQuery.plugin.textSelection#encapsulateSelection encapsulateSelection}
+	 *  - {@link jQuery.plugin.textSelection#getCaretPosition getCaretPosition}
+	 *  - {@link jQuery.plugin.textSelection#setSelection setSelection}
+	 *  - {@link jQuery.plugin.textSelection#scrollToCaretPosition scrollToCaretPosition}
+	 *  - {@link jQuery.plugin.textSelection#register register}
+	 *  - {@link jQuery.plugin.textSelection#unregister unregister}
+	 * @param {Mixed} [options] Options to pass to the command
+	 * @return {Mixed} Depending on the command
+	 */
 	$.fn.textSelection = function ( command, options ) {
 		var fn,
 			alternateFn,
@@ -9,57 +51,110 @@
 
 		fn = {
 			/**
-			 * Get the contents of the textarea
+			 * Get the contents of the textarea.
 			 *
+			 * @private
 			 * @return {string}
 			 */
 			getContents: function () {
 				return this.val();
 			},
+
 			/**
-			 * Set the contents of the textarea, replacing anything that was there before
+			 * Set the contents of the textarea, replacing anything that was there before.
 			 *
+			 * @private
 			 * @param {string} content
+			 * @return {jQuery}
+			 * @chainable
 			 */
 			setContents: function ( content ) {
-				this.val( content );
+				return this.each( function () {
+					var scrollTop = this.scrollTop;
+					$( this ).val( content );
+					// Setting this.value may scroll the textarea, restore the scroll position
+					this.scrollTop = scrollTop;
+				} );
 			},
+
 			/**
 			 * Get the currently selected text in this textarea.
 			 *
+			 * @private
 			 * @return {string}
 			 */
 			getSelection: function () {
 				var retval,
 					el = this.get( 0 );
 
-				if ( !el || $( el ).is( ':hidden' ) ) {
+				if ( !el ) {
 					retval = '';
-				} else if ( el.selectionStart || el.selectionStart === 0 ) {
+				} else {
 					retval = el.value.substring( el.selectionStart, el.selectionEnd );
 				}
 
 				return retval;
 			},
+
 			/**
-			 * Ported from skins/common/edit.js by Trevor Parscal
-			 * (c) 2009 Wikimedia Foundation (GPLv2) - http://www.wikimedia.org
+			 * Replace the selected text in the textarea with the given text, or insert it at the cursor.
 			 *
-			 * Inserts text at the beginning and end of a text selection, optionally
+			 * @private
+			 * @param {string} value
+			 * @return {jQuery}
+			 * @chainable
+			 */
+			replaceSelection: function ( value ) {
+				return this.each( function () {
+					var allText, currSelection, startPos, endPos;
+
+					allText = $( this ).textSelection( 'getContents' );
+					currSelection = $( this ).textSelection( 'getCaretPosition', { startAndEnd: true } );
+					startPos = currSelection[ 0 ];
+					endPos = currSelection[ 1 ];
+
+					$( this ).textSelection( 'setContents', allText.slice( 0, startPos ) + value +
+						allText.slice( endPos ) );
+					$( this ).textSelection( 'setSelection', {
+						start: startPos,
+						end: startPos + value.length
+					} );
+				} );
+			},
+
+			/**
+			 * Insert text at the beginning and end of a text selection, optionally
 			 * inserting text at the caret when selection is empty.
 			 *
-			 * @param {Object} options Options
-			 * FIXME document the options parameters
+			 * Also focusses the textarea.
+			 *
+			 * @private
+			 * @param {Object} [options]
+			 * @param {string} [options.pre] Text to insert before the cursor/selection
+			 * @param {string} [options.peri] Text to insert between pre and post and select afterwards
+			 * @param {string} [options.post] Text to insert after the cursor/selection
+			 * @param {boolean} [options.ownline=false] Put the inserted text on a line of its own
+			 * @param {boolean} [options.replace=false] If there is a selection, replace it with peri
+			 *  instead of leaving it alone
+			 * @param {boolean} [options.selectPeri=true] Select the peri text if it was inserted (but not
+			 *  if there was a selection and replace==false, or if splitlines==true)
+			 * @param {boolean} [options.splitlines=false] If multiple lines are selected, encapsulate
+			 *  each line individually
+			 * @param {number} [options.selectionStart] Position to start selection at
+			 * @param {number} [options.selectionEnd=options.selectionStart] Position to end selection at
 			 * @return {jQuery}
+			 * @chainable
 			 */
 			encapsulateSelection: function ( options ) {
 				return this.each( function () {
-					var selText, scrollTop, insertText,
+					var selText, allText, currSelection, insertText,
+						combiningCharSelectionBug = false,
 						isSample, startPos, endPos,
 						pre = options.pre,
 						post = options.post;
 
 					/**
+					 * @ignore
 					 * Check if the selected text is the same as the insert text
 					 */
 					function checkSelectedText() {
@@ -83,6 +178,7 @@
 					}
 
 					/**
+					 * @ignore
 					 * Do the splitlines stuff.
 					 *
 					 * Wrap each line of the selected text with pre and post
@@ -106,82 +202,80 @@
 					}
 
 					isSample = false;
-					// Do nothing if display none
-					if ( this.style.display !== 'none' ) {
-						if ( this.selectionStart || this.selectionStart === 0 ) {
-							$( this ).focus();
-							if ( options.selectionStart !== undefined ) {
-								$( this ).textSelection( 'setSelection', { start: options.selectionStart, end: options.selectionEnd } );
-							}
+					$( this ).focus();
+					if ( options.selectionStart !== undefined ) {
+						$( this ).textSelection( 'setSelection', { start: options.selectionStart, end: options.selectionEnd } );
+					}
 
-							selText = $( this ).textSelection( 'getSelection' );
-							startPos = this.selectionStart;
-							endPos = this.selectionEnd;
-							scrollTop = this.scrollTop;
-							checkSelectedText();
-							if (
-								options.selectionStart !== undefined &&
-								endPos - startPos !== options.selectionEnd - options.selectionStart
-							) {
-								// This means there is a difference in the selection range returned by browser and what we passed.
-								// This happens for Chrome in the case of composite characters. Ref bug #30130
-								// Set the startPos to the correct position.
-								startPos = options.selectionStart;
-							}
+					selText = $( this ).textSelection( 'getSelection' );
+					allText = $( this ).textSelection( 'getContents' );
+					currSelection = $( this ).textSelection( 'getCaretPosition', { startAndEnd: true } );
+					startPos = currSelection[ 0 ];
+					endPos = currSelection[ 1 ];
+					checkSelectedText();
+					if (
+						options.selectionStart !== undefined &&
+						endPos - startPos !== options.selectionEnd - options.selectionStart
+					) {
+						// This means there is a difference in the selection range returned by browser and what we passed.
+						// This happens for Safari 5.1, Chrome 12 in the case of composite characters. Ref T32130
+						// Set the startPos to the correct position.
+						startPos = options.selectionStart;
+						combiningCharSelectionBug = true;
+						// TODO: The comment above is from 2011. Is this still a problem for browsers we support today?
+						// Minimal test case: https://jsfiddle.net/z4q7a2ko/
+					}
 
-							insertText = pre + selText + post;
-							if ( options.splitlines ) {
-								insertText = doSplitLines( selText, pre, post );
-							}
-							if ( options.ownline ) {
-								if ( startPos !== 0 && this.value.charAt( startPos - 1 ) !== '\n' && this.value.charAt( startPos - 1 ) !== '\r' ) {
-									insertText = '\n' + insertText;
-									pre += '\n';
-								}
-								if ( this.value.charAt( endPos ) !== '\n' && this.value.charAt( endPos ) !== '\r' ) {
-									insertText += '\n';
-									post += '\n';
-								}
-							}
-							this.value = this.value.slice( 0, startPos ) + insertText +
-								this.value.slice( endPos );
-							// Setting this.value scrolls the textarea to the top, restore the scroll position
-							this.scrollTop = scrollTop;
-							if ( window.opera ) {
-								pre = pre.replace( /\r?\n/g, '\r\n' );
-								selText = selText.replace( /\r?\n/g, '\r\n' );
-								post = post.replace( /\r?\n/g, '\r\n' );
-							}
-							if ( isSample && options.selectPeri && ( !options.splitlines || ( options.splitlines && selText.indexOf( '\n' ) === -1 ) ) ) {
-								this.selectionStart = startPos + pre.length;
-								this.selectionEnd = startPos + pre.length + selText.length;
-							} else {
-								this.selectionStart = startPos + insertText.length;
-								this.selectionEnd = this.selectionStart;
-							}
+					insertText = pre + selText + post;
+					if ( options.splitlines ) {
+						insertText = doSplitLines( selText, pre, post );
+					}
+					if ( options.ownline ) {
+						if ( startPos !== 0 && allText.charAt( startPos - 1 ) !== '\n' && allText.charAt( startPos - 1 ) !== '\r' ) {
+							insertText = '\n' + insertText;
+							pre += '\n';
+						}
+						if ( allText.charAt( endPos ) !== '\n' && allText.charAt( endPos ) !== '\r' ) {
+							insertText += '\n';
+							post += '\n';
 						}
 					}
+					if ( combiningCharSelectionBug ) {
+						$( this ).textSelection( 'setContents', allText.slice( 0, startPos ) + insertText +
+							allText.slice( endPos ) );
+					} else {
+						$( this ).textSelection( 'replaceSelection', insertText );
+					}
+					if ( isSample && options.selectPeri && ( !options.splitlines || ( options.splitlines && selText.indexOf( '\n' ) === -1 ) ) ) {
+						$( this ).textSelection( 'setSelection', {
+							start: startPos + pre.length,
+							end: startPos + pre.length + selText.length
+						} );
+					} else {
+						$( this ).textSelection( 'setSelection', {
+							start: startPos + insertText.length
+						} );
+					}
 					$( this ).trigger( 'encapsulateSelection', [ options.pre, options.peri, options.post, options.ownline,
-						options.replace, options.spitlines ] );
+						options.replace, options.splitlines ] );
 				} );
 			},
+
 			/**
-			 * Ported from Wikia's LinkSuggest extension
-			 * https://svn.wikia-code.com/wikia/trunk/extensions/wikia/LinkSuggest
+			 * Get the current cursor position (in UTF-16 code units) in a textarea.
 			 *
-			 * Get the position (in resolution of bytes not necessarily characters)
-			 * in a textarea
-			 *
-			 * @param {Object} options Options
-			 * FIXME document the options parameters
-			 * @return {number} Position
+			 * @private
+			 * @param {Object} [options]
+			 * @param {Object} [options.startAndEnd=false] Return range of the selection rather than just start
+			 * @return {Mixed}
+			 *  - When `startAndEnd` is `false`: number
+			 *  - When `startAndEnd` is `true`: array with two numbers, for start and end of selection
 			 */
 			getCaretPosition: function ( options ) {
 				function getCaret( e ) {
 					var caretPos = 0,
 						endPos = 0;
-
-					if ( e && ( e.selectionStart || e.selectionStart === 0 ) ) {
+					if ( e ) {
 						caretPos = e.selectionStart;
 						endPos = e.selectionEnd;
 					}
@@ -189,109 +283,99 @@
 				}
 				return getCaret( this.get( 0 ) );
 			},
+
 			/**
-			 * @param {Object} options options
-			 * FIXME document the options parameters
+			 * Set the current cursor position (in UTF-16 code units) in a textarea.
+			 *
+			 * @private
+			 * @param {Object} [options]
+			 * @param {number} options.start
+			 * @param {number} [options.end=options.start]
 			 * @return {jQuery}
+			 * @chainable
 			 */
 			setSelection: function ( options ) {
 				return this.each( function () {
-					// Do nothing if hidden
-					if ( !$( this ).is( ':hidden' ) ) {
-						if ( this.selectionStart || this.selectionStart === 0 ) {
-							// Opera 9.0 doesn't allow setting selectionStart past
-							// selectionEnd; any attempts to do that will be ignored
-							// Make sure to set them in the right order
-							if ( options.start > this.selectionEnd ) {
-								this.selectionEnd = options.end;
-								this.selectionStart = options.start;
-							} else {
-								this.selectionStart = options.start;
-								this.selectionEnd = options.end;
-							}
-						}
+					// Opera 9.0 doesn't allow setting selectionStart past
+					// selectionEnd; any attempts to do that will be ignored
+					// Make sure to set them in the right order
+					if ( options.start > this.selectionEnd ) {
+						this.selectionEnd = options.end;
+						this.selectionStart = options.start;
+					} else {
+						this.selectionStart = options.start;
+						this.selectionEnd = options.end;
 					}
 				} );
 			},
+
 			/**
-			 * Ported from Wikia's LinkSuggest extension
-			 * https://svn.wikia-code.com/wikia/trunk/extensions/wikia/LinkSuggest
-			 *
 			 * Scroll a textarea to the current cursor position. You can set the cursor
-			 * position with setSelection()
+			 * position with #setSelection.
 			 *
-			 * @param {Object} options options
-			 * @cfg {boolean} [force=false] Whether to force a scroll even if the caret position
+			 * @private
+			 * @param {Object} [options]
+			 * @param {string} [options.force=false] Whether to force a scroll even if the caret position
 			 *  is already visible.
-			 * FIXME document the options parameters
 			 * @return {jQuery}
+			 * @chainable
 			 */
 			scrollToCaretPosition: function ( options ) {
-				function getLineLength( e ) {
-					return Math.floor( e.scrollWidth / ( $.client.profile().platform === 'linux' ? 7 : 8 ) );
-				}
-				function getCaretScrollPosition( e ) {
-					// FIXME: This functions sucks and is off by a few lines most
-					// of the time. It should be replaced by something decent.
-					var i, j,
-						nextSpace,
-						text = e.value.replace( /\r/g, '' ),
-						caret = $( e ).textSelection( 'getCaretPosition' ),
-						lineLength = getLineLength( e ),
-						row = 0,
-						charInLine = 0,
-						lastSpaceInLine = 0;
-
-					for ( i = 0; i < caret; i++ ) {
-						charInLine++;
-						if ( text.charAt( i ) === ' ' ) {
-							lastSpaceInLine = charInLine;
-						} else if ( text.charAt( i ) === '\n' ) {
-							lastSpaceInLine = 0;
-							charInLine = 0;
-							row++;
-						}
-						if ( charInLine > lineLength ) {
-							if ( lastSpaceInLine > 0 ) {
-								charInLine = charInLine - lastSpaceInLine;
-								lastSpaceInLine = 0;
-								row++;
-							}
-						}
-					}
-					nextSpace = 0;
-					for ( j = caret; j < caret + lineLength; j++ ) {
-						if (
-							text.charAt( j ) === ' ' ||
-							text.charAt( j ) === '\n' ||
-							caret === text.length
-						) {
-							nextSpace = j;
-							break;
-						}
-					}
-					if ( nextSpace > lineLength && caret <= lineLength ) {
-						charInLine = caret - lastSpaceInLine;
-						row++;
-					}
-					return ( $.client.profile().platform === 'mac' ? 13 : ( $.client.profile().platform === 'linux' ? 15 : 16 ) ) * row;
-				}
 				return this.each( function () {
-					var scroll;
-					// Do nothing if hidden
-					if ( !$( this ).is( ':hidden' ) ) {
-						if ( this.selectionStart || this.selectionStart === 0 ) {
-							scroll = getCaretScrollPosition( this );
-							if ( options.force || scroll < $( this ).scrollTop() ||
-									scroll > $( this ).scrollTop() + $( this ).height() ) {
-								$( this ).scrollTop( scroll );
-							}
+					var
+						clientHeight = this.clientHeight,
+						origValue = this.value,
+						origSelectionStart = this.selectionStart,
+						origSelectionEnd = this.selectionEnd,
+						origScrollTop = this.scrollTop,
+						calcScrollTop;
+
+					// Delete all text after the selection and scroll the textarea to the end.
+					// This ensures the selection is visible (aligned to the bottom of the textarea).
+					// Then restore the text we deleted without changing scroll position.
+					this.value = this.value.slice( 0, this.selectionEnd );
+					this.scrollTop = this.scrollHeight;
+					// Chrome likes to adjust scroll position when changing value, so save and re-set later.
+					// Note that this is not equal to scrollHeight, it's scrollHeight minus clientHeight.
+					calcScrollTop = this.scrollTop;
+					this.value = origValue;
+					this.selectionStart = origSelectionStart;
+					this.selectionEnd = origSelectionEnd;
+
+					if ( !options.force ) {
+						// Check if all the scrolling was unnecessary and if so, restore previous position.
+						// If the current position is no more than a screenful above the original,
+						// the selection was previously visible on the screen.
+						if ( calcScrollTop < origScrollTop && origScrollTop - calcScrollTop < clientHeight ) {
+							calcScrollTop = origScrollTop;
 						}
 					}
+
+					this.scrollTop = calcScrollTop;
+
 					$( this ).trigger( 'scrollToPosition' );
 				} );
 			}
 		};
+
+		/**
+		 * @method register
+		 *
+		 * Register an alternative textSelection API for this element.
+		 *
+		 * @private
+		 * @param {Object} functions Functions to replace. Keys are command names (as in #textSelection,
+		 *  except 'register' and 'unregister'). Values are functions to execute when a given command is
+		 *  called.
+		 */
+
+		/**
+		 * @method unregister
+		 *
+		 * Unregister the alternative textSelection API for this element (see #register).
+		 *
+		 * @private
+		 */
 
 		alternateFn = $( this ).data( 'jquery.textSelection' );
 
@@ -300,40 +384,37 @@
 			// case 'getContents': // no params
 			// case 'setContents': // no params with defaults
 			// case 'getSelection': // no params
+			// case 'replaceSelection': // no params with defaults
 			case 'encapsulateSelection':
 				options = $.extend( {
-					pre: '', // Text to insert before the cursor/selection
-					peri: '', // Text to insert between pre and post and select afterwards
-					post: '', // Text to insert after the cursor/selection
-					ownline: false, // Put the inserted text on a line of its own
-					replace: false, // If there is a selection, replace it with peri instead of leaving it alone
-					selectPeri: true, // Select the peri text if it was inserted (but not if there was a selection and replace==false, or if splitlines==true)
-					splitlines: false, // If multiple lines are selected, encapsulate each line individually
-					selectionStart: undefined, // Position to start selection at
-					selectionEnd: undefined // Position to end selection at. Defaults to start
+					pre: '',
+					peri: '',
+					post: '',
+					ownline: false,
+					replace: false,
+					selectPeri: true,
+					splitlines: false,
+					selectionStart: undefined,
+					selectionEnd: undefined
 				}, options );
 				break;
 			case 'getCaretPosition':
 				options = $.extend( {
-					// Return [start, end] instead of just start
 					startAndEnd: false
 				}, options );
 				break;
 			case 'setSelection':
 				options = $.extend( {
-					// Position to start selection at
 					start: undefined,
-					// Position to end selection at. Defaults to start
 					end: undefined
 				}, options );
-
 				if ( options.end === undefined ) {
 					options.end = options.start;
 				}
 				break;
 			case 'scrollToCaretPosition':
 				options = $.extend( {
-					force: false // Force a scroll even if the caret position is already visible
+					force: false
 				}, options );
 				break;
 			case 'register':
@@ -353,5 +434,13 @@
 
 		return retval;
 	};
+
+	/**
+	 * @class jQuery
+	 */
+	/**
+	 * @method textSelection
+	 * @inheritdoc jQuery.plugin.textSelection#textSelection
+	 */
 
 }( jQuery ) );

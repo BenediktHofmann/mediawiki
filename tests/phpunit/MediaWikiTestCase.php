@@ -14,7 +14,7 @@ use Wikimedia\TestingAccessWrapper;
 /**
  * @since 1.18
  */
-abstract class MediaWikiTestCase extends PHPUnit_Framework_TestCase {
+abstract class MediaWikiTestCase extends PHPUnit\Framework\TestCase {
 
 	use MediaWikiCoversValidator;
 
@@ -267,7 +267,6 @@ abstract class MediaWikiTestCase extends PHPUnit_Framework_TestCase {
 				CACHE_MEMCACHED => $hashCache,
 				'apc' => $hashCache,
 				'apcu' => $hashCache,
-				'xcache' => $hashCache,
 				'wincache' => $hashCache,
 			] + $baseConfig->get( 'ObjectCaches' );
 
@@ -1080,6 +1079,8 @@ abstract class MediaWikiTestCase extends PHPUnit_Framework_TestCase {
 			}
 		}
 
+		SiteStatsInit::doPlaceholderInit();
+
 		User::resetIdByNameCache();
 
 		// Make sysop user
@@ -1434,8 +1435,9 @@ abstract class MediaWikiTestCase extends PHPUnit_Framework_TestCase {
 	 */
 	private function resetDB( $db, $tablesUsed ) {
 		if ( $db ) {
-			$userTables = [ 'user', 'user_groups', 'user_properties' ];
-			$pageTables = [ 'page', 'revision', 'ip_changes', 'revision_comment_temp', 'comment' ];
+			$userTables = [ 'user', 'user_groups', 'user_properties', 'actor' ];
+			$pageTables = [ 'page', 'revision', 'ip_changes', 'revision_comment_temp',
+				'revision_actor_temp', 'comment' ];
 			$coreDBDataTables = array_merge( $userTables, $pageTables );
 
 			// If any of the user or page tables were marked as used, we should clear all of them.
@@ -1596,9 +1598,9 @@ abstract class MediaWikiTestCase extends PHPUnit_Framework_TestCase {
 	 * @param string $function
 	 */
 	public function hideDeprecated( $function ) {
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		wfDeprecated( $function );
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 	}
 
 	/**
@@ -1892,9 +1894,9 @@ abstract class MediaWikiTestCase extends PHPUnit_Framework_TestCase {
 
 		# This check may also protect against code injection in
 		# case of broken installations.
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		$haveDiff3 = $wgDiff3 && file_exists( $wgDiff3 );
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 
 		if ( !$haveDiff3 ) {
 			$this->markTestSkipped( "Skip test, since diff3 is not configured" );

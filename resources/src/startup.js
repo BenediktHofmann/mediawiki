@@ -30,11 +30,11 @@ window.mwNow = ( function () {
  *
  * Browsers we support in our modern run-time (Grade A):
  * - Chrome 13+
- * - IE 10+
+ * - IE 11+
  * - Firefox 4+
  * - Safari 5+
  * - Opera 15+
- * - Mobile Safari 5.1+ (iOS 5+)
+ * - Mobile Safari 6.0+ (iOS 6+)
  * - Android 4.1+
  *
  * Browsers we support in our no-javascript run-time (Grade C):
@@ -86,7 +86,7 @@ window.isCompatible = function ( str ) {
 		// support in the modern run-time.
 		// Note: Please extend the regex instead of adding new ones
 		!(
-			ua.match( /webOS\/1\.[0-4]|SymbianOS|Series60|NetFront|Opera Mini|S40OviBrowser|MeeGo|Android.+Glass|^Mozilla\/5\.0 .+ Gecko\/$|googleweblight/ ) ||
+			ua.match( /MSIE 10|webOS\/1\.[0-4]|SymbianOS|Series60|NetFront|Opera Mini|S40OviBrowser|MeeGo|Android.+Glass|^Mozilla\/5\.0 .+ Gecko\/$|googleweblight/ ) ||
 			ua.match( /PlayStation/i )
 		)
 	);

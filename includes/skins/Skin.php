@@ -768,15 +768,6 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
-	 * @deprecated since 1.27, feature removed
-	 * @return bool Always false
-	 */
-	function showIPinHeader() {
-		wfDeprecated( __METHOD__, '1.27' );
-		return false;
-	}
-
-	/**
 	 * @return string
 	 */
 	function getSearchLink() {
@@ -1262,30 +1253,38 @@ abstract class Skin extends ContextSource {
 	 *
 	 * @return array
 	 */
-	function buildSidebar() {
+	public function buildSidebar() {
 		global $wgEnableSidebarCache, $wgSidebarCacheExpiry;
 
-		$callback = function () {
+		$callback = function ( $old = null, &$ttl = null ) {
 			$bar = [];
 			$this->addToSidebar( $bar, 'sidebar' );
 			Hooks::run( 'SkinBuildSidebar', [ $this, &$bar ] );
+			if ( MessageCache::singleton()->isDisabled() ) {
+				$ttl = WANObjectCache::TTL_UNCACHEABLE; // bug T133069
+			}
 
 			return $bar;
 		};
 
-		if ( $wgEnableSidebarCache ) {
-			$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
-			$sidebar = $cache->getWithSetCallback(
-				$cache->makeKey( 'sidebar', $this->getLanguage()->getCode() ),
-				MessageCache::singleton()->isDisabled()
-					? $cache::TTL_UNCACHEABLE // bug T133069
-					: $wgSidebarCacheExpiry,
+		$msgCache = MessageCache::singleton();
+		$wanCache = MediaWikiServices::getInstance()->getMainWANObjectCache();
+
+		$sidebar = $wgEnableSidebarCache
+			? $wanCache->getWithSetCallback(
+				$wanCache->makeKey( 'sidebar', $this->getLanguage()->getCode() ),
+				$wgSidebarCacheExpiry,
 				$callback,
-				[ 'lockTSE' => 30 ]
-			);
-		} else {
-			$sidebar = $callback();
-		}
+				[
+					'checkKeys' => [
+						// Unless there is both no exact $code override nor an i18n definition
+						// in the the software, the only MediaWiki page to check is for $code.
+						$msgCache->getCheckKey( $this->getLanguage()->getCode() )
+					],
+					'lockTSE' => 30
+				]
+			)
+			: $callback();
 
 		// Apply post-processing to the cached value
 		Hooks::run( 'SidebarBeforeOutput', [ $this, &$sidebar ] );

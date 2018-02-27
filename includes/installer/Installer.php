@@ -243,7 +243,6 @@ abstract class Installer {
 	 * @var array
 	 */
 	protected $objectCaches = [
-		'xcache' => 'xcache_get',
 		'apc' => 'apc_fetch',
 		'apcu' => 'apcu_fetch',
 		'wincache' => 'wincache_ucache_get'
@@ -446,8 +445,6 @@ abstract class Installer {
 
 		$this->parserTitle = Title::newFromText( 'Installer' );
 		$this->parserOptions = new ParserOptions( $wgUser ); // language will be wrong :(
-		$this->parserOptions->setEditSection( false );
-		$this->parserOptions->setWrapOutputClass( false );
 		// Don't try to access DB before user language is initialised
 		$this->setParserLanguage( Language::factory( 'en' ) );
 	}
@@ -600,9 +597,9 @@ abstract class Installer {
 		// phpcs:ignore MediaWiki.VariableAnalysis.UnusedGlobalVariables
 		global $wgExtensionDirectory, $wgStyleDirectory;
 
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		$_lsExists = file_exists( "$IP/LocalSettings.php" );
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 
 		if ( !$_lsExists ) {
 			return false;
@@ -689,6 +686,7 @@ abstract class Installer {
 			$out = $wgParser->parse( $text, $this->parserTitle, $this->parserOptions, $lineStart );
 			$html = $out->getText( [
 				'enableSectionEditLinks' => false,
+				'unwrap' => true,
 			] );
 		} catch ( MediaWiki\Services\ServiceDisabledException $e ) {
 			$html = '<!--DB access attempted during parse-->  ' . htmlspecialchars( $text );
@@ -806,14 +804,14 @@ abstract class Installer {
 	 * @return bool
 	 */
 	protected function envCheckPCRE() {
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		$regexd = preg_replace( '/[\x{0430}-\x{04FF}]/iu', '', '-АБВГД-' );
 		// Need to check for \p support too, as PCRE can be compiled
 		// with utf8 support, but not unicode property support.
 		// check that \p{Zs} (space separators) matches
 		// U+3000 (Ideographic space)
 		$regexprop = preg_replace( '/\p{Zs}/u', '', "-\xE3\x80\x80-" );
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 		if ( $regexd != '--' || $regexprop != '--' ) {
 			$this->showError( 'config-pcre-no-utf8' );
 
@@ -857,9 +855,6 @@ abstract class Installer {
 		$caches = [];
 		foreach ( $this->objectCaches as $name => $function ) {
 			if ( function_exists( $function ) ) {
-				if ( $name == 'xcache' && !wfIniGetBool( 'xcache.var_size' ) ) {
-					continue;
-				}
 				$caches[$name] = true;
 			}
 		}
@@ -1209,7 +1204,7 @@ abstract class Installer {
 
 		// it would be good to check other popular languages here, but it'll be slow.
 
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 
 		foreach ( $scriptTypes as $ext => $contents ) {
 			foreach ( $contents as $source ) {
@@ -1228,14 +1223,14 @@ abstract class Installer {
 				unlink( $dir . $file );
 
 				if ( $text == 'exec' ) {
-					MediaWiki\restoreWarnings();
+					Wikimedia\restoreWarnings();
 
 					return $ext;
 				}
 			}
 		}
 
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 
 		return false;
 	}
@@ -1568,7 +1563,7 @@ abstract class Installer {
 			$user->saveSettings();
 
 			// Update user count
-			$ssUpdate = new SiteStatsUpdate( 0, 0, 0, 0, 1 );
+			$ssUpdate = SiteStatsUpdate::factory( [ 'users' => 1 ] );
 			$ssUpdate->doUpdate();
 		}
 		$status = Status::newGood();
@@ -1704,8 +1699,8 @@ abstract class Installer {
 	 * Some long-running pages (Install, Upgrade) will want to do this
 	 */
 	protected function disableTimeLimit() {
-		MediaWiki\suppressWarnings();
+		Wikimedia\suppressWarnings();
 		set_time_limit( 0 );
-		MediaWiki\restoreWarnings();
+		Wikimedia\restoreWarnings();
 	}
 }

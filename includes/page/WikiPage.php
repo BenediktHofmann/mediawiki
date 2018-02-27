@@ -1036,11 +1036,15 @@ class WikiPage implements Page, IDBAccessObject {
 
 		$dbr = wfGetDB( DB_REPLICA );
 
-		$tables = [ 'revision', 'user' ];
+		$actorMigration = ActorMigration::newMigration();
+		$actorQuery = $actorMigration->getJoin( 'rev_user' );
+
+		$tables = array_merge( [ 'revision' ], $actorQuery['tables'], [ 'user' ] );
 
 		$fields = [
-			'user_id' => 'rev_user',
-			'user_name' => 'rev_user_text',
+			'user_id' => $actorQuery['fields']['rev_user'],
+			'user_name' => $actorQuery['fields']['rev_user_text'],
+			'actor_id' => $actorQuery['fields']['rev_actor'],
 			'user_real_name' => 'MIN(user_real_name)',
 			'timestamp' => 'MAX(rev_timestamp)',
 		];
@@ -1049,22 +1053,20 @@ class WikiPage implements Page, IDBAccessObject {
 
 		// The user who made the top revision gets credited as "this page was last edited by
 		// John, based on contributions by Tom, Dick and Harry", so don't include them twice.
-		$user = $this->getUser();
-		if ( $user ) {
-			$conds[] = "rev_user != $user";
-		} else {
-			$conds[] = "rev_user_text != {$dbr->addQuotes( $this->getUserText() )}";
-		}
+		$user = $this->getUser()
+			? User::newFromId( $this->getUser() )
+			: User::newFromName( $this->getUserText(), false );
+		$conds[] = 'NOT(' . $actorMigration->getWhere( $dbr, 'rev_user', $user )['conds'] . ')';
 
 		// Username hidden?
 		$conds[] = "{$dbr->bitAnd( 'rev_deleted', Revision::DELETED_USER )} = 0";
 
 		$jconds = [
-			'user' => [ 'LEFT JOIN', 'rev_user = user_id' ],
-		];
+			'user' => [ 'LEFT JOIN', $actorQuery['fields']['rev_user'] . ' = user_id' ],
+		] + $actorQuery['joins'];
 
 		$options = [
-			'GROUP BY' => [ 'rev_user', 'rev_user_text' ],
+			'GROUP BY' => [ $fields['user_id'], $fields['user_name'] ],
 			'ORDER BY' => 'timestamp DESC',
 		];
 
@@ -1771,8 +1773,9 @@ class WikiPage implements Page, IDBAccessObject {
 				throw new MWException( "Failed to update page row to use new revision." );
 			}
 
+			$tags = $meta['tags'];
 			Hooks::run( 'NewRevisionFromEditComplete',
-				[ $this, $revision, $meta['baseRevId'], $user ] );
+				[ $this, $revision, $meta['baseRevId'], $user, &$tags ] );
 
 			// Update recentchanges
 			if ( !( $flags & EDIT_SUPPRESS_RC ) ) {
@@ -1794,7 +1797,7 @@ class WikiPage implements Page, IDBAccessObject {
 					$newsize,
 					$revisionId,
 					$patrolled,
-					$meta['tags']
+					$tags
 				);
 			}
 
@@ -2269,9 +2272,11 @@ class WikiPage implements Page, IDBAccessObject {
 			$good = 0;
 		}
 		$edits = $options['changed'] ? 1 : 0;
-		$total = $options['created'] ? 1 : 0;
+		$pages = $options['created'] ? 1 : 0;
 
-		DeferredUpdates::addUpdate( new SiteStatsUpdate( 0, $edits, $good, $total ) );
+		DeferredUpdates::addUpdate( SiteStatsUpdate::factory(
+			[ 'edits' => $edits, 'articles' => $good, 'pages' => $pages ]
+		) );
 		DeferredUpdates::addUpdate( new SearchUpdate( $id, $title, $content ) );
 
 		// If this is another user's talk page, update newtalk.
@@ -2517,7 +2522,7 @@ class WikiPage implements Page, IDBAccessObject {
 			$cascade = false;
 
 			if ( $limit['create'] != '' ) {
-				$commentFields = CommentStore::newKey( 'pt_reason' )->insert( $dbw, $reason );
+				$commentFields = CommentStore::getStore()->insert( $dbw, 'pt_reason', $reason );
 				$dbw->replace( 'protected_titles',
 					[ [ 'pt_namespace', 'pt_title' ] ],
 					[
@@ -2780,7 +2785,8 @@ class WikiPage implements Page, IDBAccessObject {
 		$reason, $suppress = false, $u1 = null, $u2 = null, &$error = '', User $user = null,
 		$tags = [], $logsubtype = 'delete'
 	) {
-		global $wgUser, $wgContentHandlerUseDB, $wgCommentTableSchemaMigrationStage;
+		global $wgUser, $wgContentHandlerUseDB, $wgCommentTableSchemaMigrationStage,
+			$wgActorTableSchemaMigrationStage;
 
 		wfDebug( __METHOD__ . "\n" );
 
@@ -2844,8 +2850,8 @@ class WikiPage implements Page, IDBAccessObject {
 			$content = null;
 		}
 
-		$revCommentStore = new CommentStore( 'rev_comment' );
-		$arCommentStore = new CommentStore( 'ar_comment' );
+		$commentStore = CommentStore::getStore();
+		$actorMigration = ActorMigration::newMigration();
 
 		$revQuery = Revision::getQueryInfo();
 		$bitfield = false;
@@ -2881,12 +2887,11 @@ class WikiPage implements Page, IDBAccessObject {
 		$ipRevIds = [];
 
 		foreach ( $res as $row ) {
-			$comment = $revCommentStore->getComment( $row );
+			$comment = $commentStore->getComment( 'rev_comment', $row );
+			$user = User::newFromAnyId( $row->rev_user, $row->rev_user_text, $row->rev_actor );
 			$rowInsert = [
 				'ar_namespace'  => $namespace,
 				'ar_title'      => $dbKey,
-				'ar_user'       => $row->rev_user,
-				'ar_user_text'  => $row->rev_user_text,
 				'ar_timestamp'  => $row->rev_timestamp,
 				'ar_minor_edit' => $row->rev_minor_edit,
 				'ar_rev_id'     => $row->rev_id,
@@ -2898,7 +2903,8 @@ class WikiPage implements Page, IDBAccessObject {
 				'ar_page_id'    => $id,
 				'ar_deleted'    => $suppress ? $bitfield : $row->rev_deleted,
 				'ar_sha1'       => $row->rev_sha1,
-			] + $arCommentStore->insert( $dbw, $comment );
+			] + $commentStore->insert( $dbw, 'ar_comment', $comment )
+				+ $actorMigration->getInsertValues( $dbw, 'ar_user', $user );
 			if ( $wgContentHandlerUseDB ) {
 				$rowInsert['ar_content_model'] = $row->rev_content_model;
 				$rowInsert['ar_content_format'] = $row->rev_content_format;
@@ -2927,6 +2933,9 @@ class WikiPage implements Page, IDBAccessObject {
 		$dbw->delete( 'revision', [ 'rev_page' => $id ], __METHOD__ );
 		if ( $wgCommentTableSchemaMigrationStage > MIGRATION_OLD ) {
 			$dbw->delete( 'revision_comment_temp', [ 'revcomment_rev' => $revids ], __METHOD__ );
+		}
+		if ( $wgActorTableSchemaMigrationStage > MIGRATION_OLD ) {
+			$dbw->delete( 'revision_actor_temp', [ 'revactor_rev' => $revids ], __METHOD__ );
 		}
 
 		// Also delete records from ip_changes as applicable.
@@ -3019,7 +3028,9 @@ class WikiPage implements Page, IDBAccessObject {
 		}
 
 		// Update site status
-		DeferredUpdates::addUpdate( new SiteStatsUpdate( 0, 1, - (int)$countable, -1 ) );
+		DeferredUpdates::addUpdate( SiteStatsUpdate::factory(
+			[ 'edits' => 1, 'articles' => -$countable, 'pages' => -1 ]
+		) );
 
 		// Delete pagelinks, update secondary indexes, etc
 		$updates = $this->getDeletionUpdates( $content );
@@ -3157,16 +3168,31 @@ class WikiPage implements Page, IDBAccessObject {
 
 		// Get the last edit not by this person...
 		// Note: these may not be public values
-		$user = intval( $current->getUser( Revision::RAW ) );
-		$user_text = $dbw->addQuotes( $current->getUserText( Revision::RAW ) );
-		$s = $dbw->selectRow( 'revision',
+		$userId = intval( $current->getUser( Revision::RAW ) );
+		$userName = $current->getUserText( Revision::RAW );
+		if ( $userId ) {
+			$user = User::newFromId( $userId );
+			$user->setName( $userName );
+		} else {
+			$user = User::newFromName( $current->getUserText( Revision::RAW ), false );
+		}
+
+		$actorWhere = ActorMigration::newMigration()->getWhere( $dbw, 'rev_user', $user );
+
+		$s = $dbw->selectRow(
+			[ 'revision' ] + $actorWhere['tables'],
 			[ 'rev_id', 'rev_timestamp', 'rev_deleted' ],
-			[ 'rev_page' => $current->getPage(),
-				"rev_user != {$user} OR rev_user_text != {$user_text}"
-			], __METHOD__,
-			[ 'USE INDEX' => 'page_timestamp',
-				'ORDER BY' => 'rev_timestamp DESC' ]
-			);
+			[
+				'rev_page' => $current->getPage(),
+				'NOT(' . $actorWhere['conds'] . ')',
+			],
+			__METHOD__,
+			[
+				'USE INDEX' => [ 'revision' => 'page_timestamp' ],
+				'ORDER BY' => 'rev_timestamp DESC'
+			],
+			$actorWhere['joins']
+		);
 		if ( $s === false ) {
 			// No one else ever edited this page
 			return [ [ 'cantrollback' ] ];
@@ -3245,11 +3271,12 @@ class WikiPage implements Page, IDBAccessObject {
 		}
 
 		if ( count( $set ) ) {
+			$actorWhere = ActorMigration::newMigration()->getWhere( $dbw, 'rc_user', $user, false );
 			$dbw->update( 'recentchanges', $set,
 				[ /* WHERE */
 					'rc_cur_id' => $current->getPage(),
-					'rc_user_text' => $current->getUserText(),
 					'rc_timestamp > ' . $dbw->addQuotes( $s->rev_timestamp ),
+					$actorWhere['conds'], // No tables/joins are needed for rc_user
 				],
 				__METHOD__
 			);
