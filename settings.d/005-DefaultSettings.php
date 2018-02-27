@@ -1,5 +1,6 @@
 <?php
 
+$wgServer = '//' . $_SERVER['SERVER_NAME'];
 $wgLocalTZoffset = date("Z") / 60;
 $wgLocaltimezone = 'Europe/Berlin';
 $wgDefaultUserOptions['timecorrection'] = 'ZoneInfo|' . (date("I") ? 120 : 60) . '|Europe/Berlin';

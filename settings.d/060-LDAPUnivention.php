@@ -132,16 +132,20 @@ $wgGroupPermissions['Domain Admins']['rating-viewspecialpage'] = true;
 
 $wgAuth = new LdapAuthenticationPlugin();
 
-//Calculate basedb for ldap from given read only bind user
-$arrLdapHostDN = explode(",", getenv( 'LDAP_HOSTDN' ));
-$arrBaseDN = [];//dc=7761,dc=hallowelt,dc=intranet
-foreach($arrLdapHostDN as $hostDN){
-  if(strpos($hostDN, 'dc=') !== false){
-    $arrBaseDN[] = $hostDN;
-  }
-}
+$sBaseDN = getenv('LDAP_BASE');
 
-$sBaseDN = join(',', $arrBaseDN);
+if( $sBaseDN == "" ) {
+  //Calculate basedb for ldap from given read only bind user
+  $arrLdapHostDN = explode(",", getenv( 'LDAP_HOSTDN' ));
+  $arrBaseDN = [];
+  foreach($arrLdapHostDN as $hostDN){
+    if(strpos($hostDN, 'dc=') !== false){
+      $arrBaseDN[] = $hostDN;
+    }
+  }
+
+  $sBaseDN = join(',', $arrBaseDN);
+}
 
 $wgLDAPDomainNames                      = array( getenv('LDAP_MASTER') );
 $wgLDAPServerNames                      = array( getenv('LDAP_MASTER') => getenv( 'LDAP_MASTER' ) );
@@ -162,6 +166,8 @@ $wgLDAPUseLDAPGroups                    = array( getenv('LDAP_MASTER') => true )
 $wgLDAPUseLocal                         = array( getenv('LDAP_MASTER') => false );
 $wgLDAPRequiredGroups                   = array( getenv('LDAP_MASTER') => array( ) );
 $wgLDAPAuthAttribute                    = array( getenv('LDAP_MASTER') => 'bluespiceActivated=TRUE' );
+
+$wgLDAPPort                             = array( getenv('LDAP_MASTER') => 7389);
 
 //$wgLDAPDebug                            = 3;
 //$wgDebugLogGroups['ldap']               = '/tmp/bluespice_ldap.log';
