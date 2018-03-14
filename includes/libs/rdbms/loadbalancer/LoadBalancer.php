@@ -54,6 +54,8 @@ class LoadBalancer implements ILoadBalancer {
 	private $loadMonitorConfig;
 	/** @var array[] $aliases Map of (table => (dbname, schema, prefix) map) */
 	private $tableAliases = [];
+	/** @var string[] Map of (index alias => index) */
+	private $indexAliases = [];
 
 	/** @var ILoadMonitor */
 	private $loadMonitor;
@@ -680,6 +682,22 @@ class LoadBalancer implements ILoadBalancer {
 			$domain = false; // local connection requested
 		}
 
+		if ( ( $flags & self::CONN_TRX_AUTO ) === self::CONN_TRX_AUTO ) {
+			// Assuming all servers are of the same type (or similar), which is overwhelmingly
+			// the case, use the master server information to get the attributes. The information
+			// for $i cannot be used since it might be DB_REPLICA, which might require connection
+			// attempts in order to be resolved into a real server index.
+			$attributes = $this->getServerAttributes( $this->getWriterIndex() );
+			if ( $attributes[Database::ATTR_DB_LEVEL_LOCKING] ) {
+				// Callers sometimes want to (a) escape REPEATABLE-READ stateness without locking
+				// rows (e.g. FOR UPDATE) or (b) make small commits during a larger transactions
+				// to reduce lock contention. None of these apply for sqlite and using separate
+				// connections just causes self-deadlocks.
+				$flags &= ~self::CONN_TRX_AUTO;
+				$this->connLogger->info( __METHOD__ . ': ignoring CONN_TRX_AUTO to avoid deadlocks.' );
+			}
+		}
+
 		$groups = ( $groups === false || $groups === [] )
 			? [ false ] // check one "group": the generic pool
 			: (array)$groups;
@@ -981,6 +999,13 @@ class LoadBalancer implements ILoadBalancer {
 		return $conn;
 	}
 
+	public function getServerAttributes( $i ) {
+		return Database::attributesFromType(
+			$this->getServerType( $i ),
+			isset( $this->servers[$i]['driver'] ) ? $this->servers[$i]['driver'] : null
+		);
+	}
+
 	/**
 	 * Test if the specified index represents an open connection
 	 *
@@ -1065,6 +1090,7 @@ class LoadBalancer implements ILoadBalancer {
 			$this->getLazyConnectionRef( self::DB_MASTER, [], $db->getDomainID() )
 		);
 		$db->setTableAliases( $this->tableAliases );
+		$db->setIndexAliases( $this->indexAliases );
 
 		if ( $server['serverIndex'] === $this->getWriterIndex() ) {
 			if ( $this->trxRoundId !== false ) {
@@ -1732,6 +1758,10 @@ class LoadBalancer implements ILoadBalancer {
 
 	public function setTableAliases( array $aliases ) {
 		$this->tableAliases = $aliases;
+	}
+
+	public function setIndexAliases( array $aliases ) {
+		$this->indexAliases = $aliases;
 	}
 
 	public function setDomainPrefix( $prefix ) {

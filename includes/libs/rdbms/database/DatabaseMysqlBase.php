@@ -67,6 +67,8 @@ abstract class DatabaseMysqlBase extends Database {
 	private $serverVersion = null;
 	/** @var bool|null */
 	private $insertSelectIsSafe = null;
+	/** @var stdClass|null */
+	private $replicationInfoRow = null;
 
 	/**
 	 * Additional $params include:
@@ -508,19 +510,35 @@ abstract class DatabaseMysqlBase extends Database {
 		return $this->nativeReplace( $table, $rows, $fname );
 	}
 
-	protected function nativeInsertSelect(
-		$destTable, $srcTable, $varMap, $conds,
-		$fname = __METHOD__, $insertOptions = [], $selectOptions = [], $selectJoinConds = []
-	) {
-		if ( $this->insertSelectIsSafe === null ) {
-			// In MySQL, an INSERT SELECT is only replication safe with row-based
-			// replication or if innodb_autoinc_lock_mode is 0. When those
-			// conditions aren't met, use non-native mode.
-			// While we could try to determine if the insert is safe anyway by
-			// checking if the target table has an auto-increment column that
-			// isn't set in $varMap, that seems unlikely to be worth the extra
-			// complexity.
-			$row = $this->selectRow(
+	protected function isInsertSelectSafe( array $insertOptions, array $selectOptions ) {
+		$row = $this->getReplicationSafetyInfo();
+		// For row-based-replication, the resulting changes will be relayed, not the query
+		if ( $row->binlog_format === 'ROW' ) {
+			return true;
+		}
+		// LIMIT requires ORDER BY on a unique key or it is non-deterministic
+		if ( isset( $selectOptions['LIMIT'] ) ) {
+			return false;
+		}
+		// In MySQL, an INSERT SELECT is only replication safe with row-based
+		// replication or if innodb_autoinc_lock_mode is 0. When those
+		// conditions aren't met, use non-native mode.
+		// While we could try to determine if the insert is safe anyway by
+		// checking if the target table has an auto-increment column that
+		// isn't set in $varMap, that seems unlikely to be worth the extra
+		// complexity.
+		return (
+			in_array( 'NO_AUTO_COLUMNS', $insertOptions ) ||
+			(int)$row->innodb_autoinc_lock_mode === 0
+		);
+	}
+
+	/**
+	 * @return stdClass Process cached row
+	 */
+	protected function getReplicationSafetyInfo() {
+		if ( $this->replicationInfoRow === null ) {
+			$this->replicationInfoRow = $this->selectRow(
 				false,
 				[
 					'innodb_autoinc_lock_mode' => '@@innodb_autoinc_lock_mode',
@@ -529,33 +547,9 @@ abstract class DatabaseMysqlBase extends Database {
 				[],
 				__METHOD__
 			);
-			$this->insertSelectIsSafe = $row->binlog_format === 'ROW' ||
-				(int)$row->innodb_autoinc_lock_mode === 0;
 		}
 
-		if ( !$this->insertSelectIsSafe ) {
-			return $this->nonNativeInsertSelect(
-				$destTable,
-				$srcTable,
-				$varMap,
-				$conds,
-				$fname,
-				$insertOptions,
-				$selectOptions,
-				$selectJoinConds
-			);
-		} else {
-			return parent::nativeInsertSelect(
-				$destTable,
-				$srcTable,
-				$varMap,
-				$conds,
-				$fname,
-				$insertOptions,
-				$selectOptions,
-				$selectJoinConds
-			);
-		}
+		return $this->replicationInfoRow;
 	}
 
 	/**
@@ -568,13 +562,14 @@ abstract class DatabaseMysqlBase extends Database {
 	 * @param string|array $conds
 	 * @param string $fname
 	 * @param string|array $options
+	 * @param array $join_conds
 	 * @return bool|int
 	 */
 	public function estimateRowCount( $table, $vars = '*', $conds = '',
-		$fname = __METHOD__, $options = []
+		$fname = __METHOD__, $options = [], $join_conds = []
 	) {
 		$options['EXPLAIN'] = true;
-		$res = $this->select( $table, $vars, $conds, $fname, $options );
+		$res = $this->select( $table, $vars, $conds, $fname, $options, $join_conds );
 		if ( $res === false ) {
 			return false;
 		}
@@ -677,7 +672,7 @@ abstract class DatabaseMysqlBase extends Database {
 			}
 		}
 
-		return empty( $result ) ? false : $result;
+		return $result ?: false;
 	}
 
 	/**
@@ -1424,44 +1419,19 @@ abstract class DatabaseMysqlBase extends Database {
 		return in_array( $name, $this->listViews( $prefix ) );
 	}
 
-	/**
-	 * Allows for index remapping in queries where this is not consistent across DBMS
-	 *
-	 * @param string $index
-	 * @return string
-	 */
-	protected function indexName( $index ) {
-		/**
-		 * When SQLite indexes were introduced in r45764, it was noted that
-		 * SQLite requires index names to be unique within the whole database,
-		 * not just within a schema. As discussed in CR r45819, to avoid the
-		 * need for a schema change on existing installations, the indexes
-		 * were implicitly mapped from the new names to the old names.
-		 *
-		 * This mapping can be removed if DB patches are introduced to alter
-		 * the relevant tables in existing installations. Note that because
-		 * this index mapping applies to table creation, even new installations
-		 * of MySQL have the old names (except for installations created during
-		 * a period where this mapping was inappropriately removed, see
-		 * T154872).
-		 */
-		$renamed = [
-			'ar_usertext_timestamp' => 'usertext_timestamp',
-			'un_user_id' => 'user_id',
-			'un_user_ip' => 'user_ip',
-		];
-
-		if ( isset( $renamed[$index] ) ) {
-			return $renamed[$index];
-		} else {
-			return $index;
-		}
-	}
-
 	protected function isTransactableQuery( $sql ) {
 		return parent::isTransactableQuery( $sql ) &&
 			!preg_match( '/^SELECT\s+(GET|RELEASE|IS_FREE)_LOCK\(/', $sql );
 	}
+
+	/**
+	 * @param string $field Field or column to cast
+	 * @return string
+	 */
+	public function buildIntegerCast( $field ) {
+		return 'CAST( ' . $field . ' AS SIGNED )';
+	}
+
 }
 
 class_alias( DatabaseMysqlBase::class, 'DatabaseMysqlBase' );

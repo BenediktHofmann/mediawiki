@@ -178,10 +178,8 @@ class LogPager extends ReverseChronologicalPager {
 		$name = $usertitle->getText();
 
 		// Assume no joins required for log_user
-		// Don't query by user ID here, it might be able to use the
-		// log_user_text_time or log_user_text_type_time index.
 		$this->mConds[] = ActorMigration::newMigration()->getWhere(
-			wfGetDB( DB_REPLICA ), 'log_user', User::newFromName( $name, false ), false
+			wfGetDB( DB_REPLICA ), 'log_user', User::newFromName( $name, false )
 		)['conds'];
 
 		$this->enforcePerformerRestrictions();
@@ -424,9 +422,9 @@ class LogPager extends ReverseChronologicalPager {
 		$this->actionRestrictionsEnforced = true;
 		$user = $this->getUser();
 		if ( !$user->isAllowed( 'deletedhistory' ) ) {
-			$this->mConds[] = $this->mDb->bitAnd( 'log_deleted', LogPage::DELETED_USER ) . ' = 0';
+			$this->mConds[] = $this->mDb->bitAnd( 'log_deleted', LogPage::DELETED_ACTION ) . ' = 0';
 		} elseif ( !$user->isAllowedAny( 'suppressrevision', 'viewsuppressed' ) ) {
-			$this->mConds[] = $this->mDb->bitAnd( 'log_deleted', LogPage::SUPPRESSED_USER ) .
+			$this->mConds[] = $this->mDb->bitAnd( 'log_deleted', LogPage::SUPPRESSED_ACTION ) .
 				' != ' . LogPage::SUPPRESSED_USER;
 		}
 	}
@@ -442,9 +440,9 @@ class LogPager extends ReverseChronologicalPager {
 		$this->performerRestrictionsEnforced = true;
 		$user = $this->getUser();
 		if ( !$user->isAllowed( 'deletedhistory' ) ) {
-			$this->mConds[] = $this->mDb->bitAnd( 'log_deleted', LogPage::DELETED_ACTION ) . ' = 0';
+			$this->mConds[] = $this->mDb->bitAnd( 'log_deleted', LogPage::DELETED_USER ) . ' = 0';
 		} elseif ( !$user->isAllowedAny( 'suppressrevision', 'viewsuppressed' ) ) {
-			$this->mConds[] = $this->mDb->bitAnd( 'log_deleted', LogPage::SUPPRESSED_ACTION ) .
+			$this->mConds[] = $this->mDb->bitAnd( 'log_deleted', LogPage::SUPPRESSED_USER ) .
 				' != ' . LogPage::SUPPRESSED_ACTION;
 		}
 	}

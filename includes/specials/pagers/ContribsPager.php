@@ -185,7 +185,7 @@ class ContribsPager extends RangeChronologicalPager {
 		];
 
 		if ( $this->contribs == 'newbie' ) {
-			$max = $this->mDb->selectField( 'user', 'max(user_id)', false, __METHOD__ );
+			$max = $this->mDb->selectField( 'user', 'max(user_id)', '', __METHOD__ );
 			$queryInfo['conds'][] = $revQuery['fields']['rev_user'] . ' >' . (int)( $max - $max / 100 );
 			# ignore local groups with the bot right
 			# @todo FIXME: Global groups may have 'bot' rights
@@ -218,8 +218,18 @@ class ContribsPager extends RangeChronologicalPager {
 				$queryInfo['conds'][] = $ipRangeConds;
 			} else {
 				// tables and joins are already handled by Revision::getQueryInfo()
-				$queryInfo['conds'][] = ActorMigration::newMigration()
-					->getWhere( $this->mDb, 'rev_user', $user )['conds'];
+				$conds = ActorMigration::newMigration()->getWhere( $this->mDb, 'rev_user', $user );
+				$queryInfo['conds'][] = $conds['conds'];
+				// Force the appropriate index to avoid bad query plans (T189026)
+				if ( count( $conds['orconds'] ) === 1 ) {
+					if ( isset( $conds['orconds']['actor'] ) ) {
+						// @todo: This will need changing when revision_comment_temp goes away
+						$queryInfo['options']['USE INDEX']['temp_rev_user'] = 'actor_timestamp';
+					} else {
+						$queryInfo['options']['USE INDEX']['revision'] =
+							isset( $conds['orconds']['userid'] ) ? 'user_timestamp' : 'usertext_timestamp';
+					}
+				}
 			}
 		}
 

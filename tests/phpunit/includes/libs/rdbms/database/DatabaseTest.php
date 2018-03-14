@@ -1,9 +1,14 @@
 <?php
 
+use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\DatabaseMysqli;
 use Wikimedia\Rdbms\LBFactorySingle;
 use Wikimedia\Rdbms\TransactionProfiler;
 use Wikimedia\TestingAccessWrapper;
+use Wikimedia\Rdbms\DatabaseSqlite;
+use Wikimedia\Rdbms\DatabasePostgres;
+use Wikimedia\Rdbms\DatabaseMssql;
 
 class DatabaseTest extends PHPUnit\Framework\TestCase {
 
@@ -11,6 +16,29 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 
 	protected function setUp() {
 		$this->db = new DatabaseTestHelper( __CLASS__ . '::' . $this->getName() );
+	}
+
+	/**
+	 * @dataProvider provideAddQuotes
+	 * @covers Wikimedia\Rdbms\Database::factory
+	 */
+	public function testFactory() {
+		$m = Database::NEW_UNCONNECTED; // no-connect mode
+		$p = [ 'host' => 'localhost', 'user' => 'me', 'password' => 'myself', 'dbname' => 'i' ];
+
+		$this->assertInstanceOf( DatabaseMysqli::class, Database::factory( 'mysqli', $p, $m ) );
+		$this->assertInstanceOf( DatabaseMysqli::class, Database::factory( 'MySqli', $p, $m ) );
+		$this->assertInstanceOf( DatabaseMysqli::class, Database::factory( 'MySQLi', $p, $m ) );
+		$this->assertInstanceOf( DatabasePostgres::class, Database::factory( 'postgres', $p, $m ) );
+		$this->assertInstanceOf( DatabasePostgres::class, Database::factory( 'Postgres', $p, $m ) );
+
+		$x = $p + [ 'port' => 10000, 'UseWindowsAuth' => false ];
+		$this->assertInstanceOf( DatabaseMssql::class, Database::factory( 'mssql', $x, $m ) );
+
+		$x = $p + [ 'dbFilePath' => 'some/file.sqlite' ];
+		$this->assertInstanceOf( DatabaseSqlite::class, Database::factory( 'sqlite', $x, $m ) );
+		$x = $p + [ 'dbDirectory' => 'some/file' ];
+		$this->assertInstanceOf( DatabaseSqlite::class, Database::factory( 'sqlite', $x, $m ) );
 	}
 
 	public static function provideAddQuotes() {
@@ -467,6 +495,32 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$db->restoreFlags();
 		$this->assertEquals( $origSsl, $db->getFlag( DBO_SSL ) );
 		$this->assertEquals( $origTrx, $db->getFlag( DBO_TRX ) );
+	}
+
+	/**
+	 * @expectedException UnexpectedValueException
+	 * @covers Wikimedia\Rdbms\Database::setFlag
+	 */
+	public function testDBOIgnoreSet() {
+		$db = $this->getMockBuilder( DatabaseMysqli::class )
+			->disableOriginalConstructor()
+			->setMethods( null )
+			->getMock();
+
+		$db->setFlag( Database::DBO_IGNORE );
+	}
+
+	/**
+	 * @expectedException UnexpectedValueException
+	 * @covers Wikimedia\Rdbms\Database::clearFlag
+	 */
+	public function testDBOIgnoreClear() {
+		$db = $this->getMockBuilder( DatabaseMysqli::class )
+			->disableOriginalConstructor()
+			->setMethods( null )
+			->getMock();
+
+		$db->clearFlag( Database::DBO_IGNORE );
 	}
 
 	/**

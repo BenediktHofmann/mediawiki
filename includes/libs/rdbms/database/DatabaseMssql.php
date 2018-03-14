@@ -509,15 +509,16 @@ class DatabaseMssql extends Database {
 	 * @param string $conds
 	 * @param string $fname
 	 * @param array $options
+	 * @param array $join_conds
 	 * @return int
 	 */
 	public function estimateRowCount( $table, $vars = '*', $conds = '',
-		$fname = __METHOD__, $options = []
+		$fname = __METHOD__, $options = [], $join_conds = []
 	) {
 		// http://msdn2.microsoft.com/en-us/library/aa259203.aspx
 		$options['EXPLAIN'] = true;
 		$options['FOR COUNT'] = true;
-		$res = $this->select( $table, $vars, $conds, $fname, $options );
+		$res = $this->select( $table, $vars, $conds, $fname, $options, $join_conds );
 
 		$rows = -1;
 		if ( $res ) {
@@ -569,7 +570,7 @@ class DatabaseMssql extends Database {
 			}
 		}
 
-		return empty( $result ) ? false : $result;
+		return $result ?: false;
 	}
 
 	/**
@@ -1223,6 +1224,19 @@ class DatabaseMssql extends Database {
 			. ") {$gcsq} ({$field}))";
 
 		return $sql;
+	}
+
+	public function buildSubstring( $input, $startPosition, $length = null ) {
+		$this->assertBuildSubstringParams( $startPosition, $length );
+		if ( $length === null ) {
+			/**
+			 * MSSQL doesn't allow an empty length parameter, so when we don't want to limit the
+			 * length returned use the default maximum size of text.
+			 * @see https://docs.microsoft.com/en-us/sql/t-sql/statements/set-textsize-transact-sql
+			 */
+			$length = 2147483647;
+		}
+		return 'SUBSTRING(' . implode( ',', [ $input, $startPosition, $length ] ) . ')';
 	}
 
 	/**

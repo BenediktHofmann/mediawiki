@@ -281,7 +281,7 @@ class DBConnRef implements IDatabase {
 	}
 
 	public function estimateRowCount(
-		$table, $vars = '*', $conds = '', $fname = __METHOD__, $options = []
+		$table, $vars = '*', $conds = '', $fname = __METHOD__, $options = [], $join_conds = []
 	) {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
@@ -350,7 +350,15 @@ class DBConnRef implements IDatabase {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
+	public function buildSubstring( $input, $startPosition, $length = null ) {
+		return $this->__call( __FUNCTION__, func_get_args() );
+	}
+
 	public function buildStringCast( $field ) {
+		return $this->__call( __FUNCTION__, func_get_args() );
+	}
+
+	public function buildIntegerCast( $field ) {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
@@ -607,6 +615,10 @@ class DBConnRef implements IDatabase {
 	}
 
 	public function setTableAliases( array $aliases ) {
+		return $this->__call( __FUNCTION__, func_get_args() );
+	}
+
+	public function setIndexAliases( array $aliases ) {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 

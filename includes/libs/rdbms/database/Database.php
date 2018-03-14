@@ -27,11 +27,13 @@ namespace Wikimedia\Rdbms;
 
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Wikimedia\ScopedCallback;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 use Wikimedia;
 use BagOStuff;
 use HashBagOStuff;
+use LogicException;
 use InvalidArgumentException;
 use Exception;
 use RuntimeException;
@@ -58,27 +60,38 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	const SLOW_WRITE_SEC = 0.500;
 	const SMALL_WRITE_ROWS = 100;
 
+	/** @var string Whether lock granularity is on the level of the entire database */
+	const ATTR_DB_LEVEL_LOCKING = 'db-level-locking';
+
+	/** @var int New Database instance will not be connected yet when returned */
+	const NEW_UNCONNECTED = 0;
+	/** @var int New Database instance will already be connected when returned */
+	const NEW_CONNECTED = 1;
+
 	/** @var string SQL query */
 	protected $lastQuery = '';
 	/** @var float|bool UNIX timestamp of last write query */
 	protected $lastWriteTime = false;
 	/** @var string|bool */
 	protected $phpError = false;
-	/** @var string */
+	/** @var string Server that this instance is currently connected to */
 	protected $server;
-	/** @var string */
+	/** @var string User that this instance is currently connected under the name of */
 	protected $user;
-	/** @var string */
+	/** @var string Password used to establish the current connection */
 	protected $password;
-	/** @var string */
+	/** @var string Database that this instance is currently connected to */
 	protected $dbName;
-	/** @var array[] $aliases Map of (table => (dbname, schema, prefix) map) */
+	/** @var array[] Map of (table => (dbname, schema, prefix) map) */
 	protected $tableAliases = [];
+	/** @var string[] Map of (index alias => index) */
+	protected $indexAliases = [];
 	/** @var bool Whether this PHP instance is for a CLI script */
 	protected $cliMode;
 	/** @var string Agent name for query profiling */
 	protected $agent;
-
+	/** @var array Parameters used by initConnection() to establish a connection */
+	protected $connectionParams = [];
 	/** @var BagOStuff APC cache */
 	protected $srvCache;
 	/** @var LoggerInterface */
@@ -236,19 +249,17 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	/** @var TransactionProfiler */
 	protected $trxProfiler;
 
+	/** @var int */
+	protected $nonNativeInsertSelectBatchSize = 10000;
+
 	/**
-	 * Constructor and database handle and attempt to connect to the DB server
-	 *
-	 * IDatabase classes should not be constructed directly in external
-	 * code. Database::factory() should be used instead.
-	 *
+	 * @note: exceptions for missing libraries/drivers should be thrown in initConnection()
 	 * @param array $params Parameters passed from Database::factory()
 	 */
-	function __construct( array $params ) {
-		$server = $params['host'];
-		$user = $params['user'];
-		$password = $params['password'];
-		$dbName = $params['dbname'];
+	protected function __construct( array $params ) {
+		foreach ( [ 'host', 'user', 'password', 'dbname' ] as $name ) {
+			$this->connectionParams[$name] = $params[$name];
+		}
 
 		$this->schema = $params['schema'];
 		$this->tablePrefix = $params['tablePrefix'];
@@ -278,15 +289,28 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		$this->queryLogger = $params['queryLogger'];
 		$this->errorLogger = $params['errorLogger'];
 
-		// Set initial dummy domain until open() sets the final DB/prefix
-		$this->currentDomain = DatabaseDomain::newUnspecified();
-
-		if ( $user ) {
-			$this->open( $server, $user, $password, $dbName );
-		} elseif ( $this->requiresDatabaseUser() ) {
-			throw new InvalidArgumentException( "No database user provided." );
+		if ( isset( $params['nonNativeInsertSelectBatchSize'] ) ) {
+			$this->nonNativeInsertSelectBatchSize = $params['nonNativeInsertSelectBatchSize'];
 		}
 
+		// Set initial dummy domain until open() sets the final DB/prefix
+		$this->currentDomain = DatabaseDomain::newUnspecified();
+	}
+
+	/**
+	 * Initialize the connection to the database over the wire (or to local files)
+	 *
+	 * @throws LogicException
+	 * @throws InvalidArgumentException
+	 * @throws DBConnectionError
+	 * @since 1.31
+	 */
+	final public function initConnection() {
+		if ( $this->isOpen() ) {
+			throw new LogicException( __METHOD__ . ': already connected.' );
+		}
+		// Establish the connection
+		$this->doInitConnection();
 		// Set the domain object after open() sets the relevant fields
 		if ( $this->dbName != '' ) {
 			// Domains with server scope but a table prefix are not used by IDatabase classes
@@ -295,11 +319,31 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
+	 * Actually connect to the database over the wire (or to local files)
+	 *
+	 * @throws InvalidArgumentException
+	 * @throws DBConnectionError
+	 * @since 1.31
+	 */
+	protected function doInitConnection() {
+		if ( strlen( $this->connectionParams['user'] ) ) {
+			$this->open(
+				$this->connectionParams['host'],
+				$this->connectionParams['user'],
+				$this->connectionParams['password'],
+				$this->connectionParams['dbname']
+			);
+		} else {
+			throw new InvalidArgumentException( "No database user provided." );
+		}
+	}
+
+	/**
 	 * Construct a Database subclass instance given a database type and parameters
 	 *
 	 * This also connects to the database immediately upon object construction
 	 *
-	 * @param string $dbType A possible DB type (sqlite, mysql, postgres)
+	 * @param string $dbType A possible DB type (sqlite, mysql, postgres,...)
 	 * @param array $p Parameter map with keys:
 	 *   - host : The hostname of the DB server
 	 *   - user : The name of the database user the client operates under
@@ -331,11 +375,79 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 *   - cliMode: Whether to consider the execution context that of a CLI script.
 	 *   - agent: Optional name used to identify the end-user in query profiling/logging.
 	 *   - srvCache: Optional BagOStuff instance to an APC-style cache.
+	 *   - nonNativeInsertSelectBatchSize: Optional batch size for non-native INSERT SELECT emulation.
+	 * @param int $connect One of the class constants (NEW_CONNECTED, NEW_UNCONNECTED) [optional]
 	 * @return Database|null If the database driver or extension cannot be found
 	 * @throws InvalidArgumentException If the database driver or extension cannot be found
 	 * @since 1.18
 	 */
-	final public static function factory( $dbType, $p = [] ) {
+	final public static function factory( $dbType, $p = [], $connect = self::NEW_CONNECTED ) {
+		$class = self::getClass( $dbType, isset( $p['driver'] ) ? $p['driver'] : null );
+
+		if ( class_exists( $class ) && is_subclass_of( $class, IDatabase::class ) ) {
+			// Resolve some defaults for b/c
+			$p['host'] = isset( $p['host'] ) ? $p['host'] : false;
+			$p['user'] = isset( $p['user'] ) ? $p['user'] : false;
+			$p['password'] = isset( $p['password'] ) ? $p['password'] : false;
+			$p['dbname'] = isset( $p['dbname'] ) ? $p['dbname'] : false;
+			$p['flags'] = isset( $p['flags'] ) ? $p['flags'] : 0;
+			$p['variables'] = isset( $p['variables'] ) ? $p['variables'] : [];
+			$p['tablePrefix'] = isset( $p['tablePrefix'] ) ? $p['tablePrefix'] : '';
+			$p['schema'] = isset( $p['schema'] ) ? $p['schema'] : '';
+			$p['cliMode'] = isset( $p['cliMode'] )
+				? $p['cliMode']
+				: ( PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg' );
+			$p['agent'] = isset( $p['agent'] ) ? $p['agent'] : '';
+			if ( !isset( $p['connLogger'] ) ) {
+				$p['connLogger'] = new NullLogger();
+			}
+			if ( !isset( $p['queryLogger'] ) ) {
+				$p['queryLogger'] = new NullLogger();
+			}
+			$p['profiler'] = isset( $p['profiler'] ) ? $p['profiler'] : null;
+			if ( !isset( $p['trxProfiler'] ) ) {
+				$p['trxProfiler'] = new TransactionProfiler();
+			}
+			if ( !isset( $p['errorLogger'] ) ) {
+				$p['errorLogger'] = function ( Exception $e ) {
+					trigger_error( get_class( $e ) . ': ' . $e->getMessage(), E_USER_WARNING );
+				};
+			}
+
+			/** @var Database $conn */
+			$conn = new $class( $p );
+			if ( $connect == self::NEW_CONNECTED ) {
+				$conn->initConnection();
+			}
+		} else {
+			$conn = null;
+		}
+
+		return $conn;
+	}
+
+	/**
+	 * @param string $dbType A possible DB type (sqlite, mysql, postgres,...)
+	 * @param string|null $driver Optional name of a specific DB client driver
+	 * @return array Map of (Database::ATTRIBUTE_* constant => value) for all such constants
+	 * @throws InvalidArgumentException
+	 * @since 1.31
+	 */
+	final public static function attributesFromType( $dbType, $driver = null ) {
+		static $defaults = [ self::ATTR_DB_LEVEL_LOCKING => false ];
+
+		$class = self::getClass( $dbType, $driver );
+
+		return call_user_func( [ $class, 'getAttributes' ] ) + $defaults;
+	}
+
+	/**
+	 * @param string $dbType A possible DB type (sqlite, mysql, postgres,...)
+	 * @param string|null $driver Optional name of a specific DB client driver
+	 * @return string Database subclass name to use
+	 * @throws InvalidArgumentException
+	 */
+	private static function getClass( $dbType, $driver = null ) {
 		// For database types with built-in support, the below maps type to IDatabase
 		// implementations. For types with multipe driver implementations (PHP extensions),
 		// an array can be used, keyed by extension name. In case of an array, the
@@ -351,17 +463,18 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 		$dbType = strtolower( $dbType );
 		$class = false;
+
 		if ( isset( $builtinTypes[$dbType] ) ) {
 			$possibleDrivers = $builtinTypes[$dbType];
 			if ( is_string( $possibleDrivers ) ) {
 				$class = $possibleDrivers;
 			} else {
-				if ( !empty( $p['driver'] ) ) {
-					if ( !isset( $possibleDrivers[$p['driver']] ) ) {
+				if ( (string)$driver !== '' ) {
+					if ( !isset( $possibleDrivers[$driver] ) ) {
 						throw new InvalidArgumentException( __METHOD__ .
-							" type '$dbType' does not support driver '{$p['driver']}'" );
+							" type '$dbType' does not support driver '{$driver}'" );
 					} else {
-						$class = $possibleDrivers[$p['driver']];
+						$class = $possibleDrivers[$driver];
 					}
 				} else {
 					foreach ( $possibleDrivers as $posDriver => $possibleClass ) {
@@ -381,42 +494,15 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 				" no viable database extension found for type '$dbType'" );
 		}
 
-		if ( class_exists( $class ) && is_subclass_of( $class, IDatabase::class ) ) {
-			// Resolve some defaults for b/c
-			$p['host'] = isset( $p['host'] ) ? $p['host'] : false;
-			$p['user'] = isset( $p['user'] ) ? $p['user'] : false;
-			$p['password'] = isset( $p['password'] ) ? $p['password'] : false;
-			$p['dbname'] = isset( $p['dbname'] ) ? $p['dbname'] : false;
-			$p['flags'] = isset( $p['flags'] ) ? $p['flags'] : 0;
-			$p['variables'] = isset( $p['variables'] ) ? $p['variables'] : [];
-			$p['tablePrefix'] = isset( $p['tablePrefix'] ) ? $p['tablePrefix'] : '';
-			$p['schema'] = isset( $p['schema'] ) ? $p['schema'] : '';
-			$p['cliMode'] = isset( $p['cliMode'] )
-				? $p['cliMode']
-				: ( PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg' );
-			$p['agent'] = isset( $p['agent'] ) ? $p['agent'] : '';
-			if ( !isset( $p['connLogger'] ) ) {
-				$p['connLogger'] = new \Psr\Log\NullLogger();
-			}
-			if ( !isset( $p['queryLogger'] ) ) {
-				$p['queryLogger'] = new \Psr\Log\NullLogger();
-			}
-			$p['profiler'] = isset( $p['profiler'] ) ? $p['profiler'] : null;
-			if ( !isset( $p['trxProfiler'] ) ) {
-				$p['trxProfiler'] = new TransactionProfiler();
-			}
-			if ( !isset( $p['errorLogger'] ) ) {
-				$p['errorLogger'] = function ( Exception $e ) {
-					trigger_error( get_class( $e ) . ': ' . $e->getMessage(), E_USER_WARNING );
-				};
-			}
+		return $class;
+	}
 
-			$conn = new $class( $p );
-		} else {
-			$conn = null;
-		}
-
-		return $conn;
+	/**
+	 * @return array Map of (Database::ATTRIBUTE_* constant => value
+	 * @since 1.31
+	 */
+	protected static function getAttributes() {
+		return [];
 	}
 
 	/**
@@ -559,7 +645,10 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 	public function writesOrCallbacksPending() {
 		return $this->trxLevel && (
-			$this->trxDoneWrites || $this->trxIdleCallbacks || $this->trxPreCommitCallbacks
+			$this->trxDoneWrites ||
+			$this->trxIdleCallbacks ||
+			$this->trxPreCommitCallbacks ||
+			$this->trxEndCallbacks
 		);
 	}
 
@@ -762,21 +851,38 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 	public function close() {
 		if ( $this->conn ) {
+			// Resolve any dangling transaction first
 			if ( $this->trxLevel() ) {
+				// Meaningful transactions should ideally have been resolved by now
+				if ( $this->writesOrCallbacksPending() ) {
+					$this->queryLogger->warning(
+						__METHOD__ . ": writes or callbacks still pending.",
+						[ 'trace' => ( new RuntimeException() )->getTraceAsString() ]
+					);
+				}
+				// Check if it is possible to properly commit and trigger callbacks
+				if ( $this->trxEndCallbacksSuppressed ) {
+					throw new DBUnexpectedError(
+						$this,
+						__METHOD__ . ': callbacks are suppressed; cannot properly commit.'
+					);
+				}
+				// Commit the changes and run any callbacks as needed
 				$this->commit( __METHOD__, self::FLUSHING_INTERNAL );
 			}
-
+			// Close the actual connection in the binding handle
 			$closed = $this->closeConnection();
 			$this->conn = false;
-		} elseif (
-			$this->trxIdleCallbacks ||
-			$this->trxPreCommitCallbacks ||
-			$this->trxEndCallbacks
-		) { // sanity
-			throw new RuntimeException( "Transaction callbacks still pending." );
+			// Sanity check that no callbacks are dangling
+			if (
+				$this->trxIdleCallbacks || $this->trxPreCommitCallbacks || $this->trxEndCallbacks
+			) {
+				throw new RuntimeException( "Transaction callbacks still pending." );
+			}
 		} else {
-			$closed = true;
+			$closed = true; // already closed; nothing to do
 		}
+
 		$this->opened = false;
 
 		return $closed;
@@ -811,11 +917,13 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
-	 * The DBMS-dependent part of query()
+	 * Run a query and return a DBMS-dependent wrapper (that has all IResultWrapper methods)
+	 *
+	 * This might return things, such as mysqli_result, that do not formally implement
+	 * IResultWrapper, but nonetheless implement all of its methods correctly
 	 *
 	 * @param string $sql SQL query.
-	 * @return ResultWrapper|bool Result object to feed to fetchObject,
-	 *   fetchRow, ...; or false on failure
+	 * @return IResultWrapper|bool Iterator to feed to fetchObject/fetchRow; false on failure
 	 */
 	abstract protected function doQuery( $sql );
 
@@ -967,12 +1075,12 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 				$this->queryLogger->warning( $msg, $params +
 					[ 'trace' => ( new RuntimeException() )->getTraceAsString() ] );
 
-				if ( !$recoverable ) {
-					# Callers may catch the exception and continue to use the DB
-					$this->reportQueryError( $lastError, $lastErrno, $sql, $fname );
-				} else {
+				if ( $recoverable ) {
 					# Should be safe to silently retry the query
 					$ret = $this->doProfiledQuery( $sql, $commentedSql, $isNonTempWrite, $fname );
+				} else {
+					# Callers may catch the exception and continue to use the DB
+					$this->reportQueryError( $lastError, $lastErrno, $sql, $fname );
 				}
 			} else {
 				$msg = __METHOD__ . ': lost connection to {dbserver} permanently';
@@ -1133,19 +1241,29 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 */
 	private function handleSessionLoss() {
 		$this->trxLevel = 0;
-		$this->trxIdleCallbacks = []; // T67263
-		$this->trxPreCommitCallbacks = []; // T67263
+		$this->trxIdleCallbacks = []; // T67263; transaction already lost
+		$this->trxPreCommitCallbacks = []; // T67263; transaction already lost
 		$this->sessionTempTables = [];
 		$this->namedLocksHeld = [];
+
+		// Note: if callback suppression is set then some *Callbacks arrays are not cleared here
+		$e = null;
 		try {
 			// Handle callbacks in trxEndCallbacks
 			$this->runOnTransactionIdleCallbacks( self::TRIGGER_ROLLBACK );
-			$this->runTransactionListenerCallbacks( self::TRIGGER_ROLLBACK );
-			return null;
-		} catch ( Exception $e ) {
+		} catch ( Exception $ex ) {
 			// Already logged; move on...
-			return $e;
+			$e = $e ?: $ex;
 		}
+		try {
+			// Handle callbacks in trxRecurringCallbacks
+			$this->runTransactionListenerCallbacks( self::TRIGGER_ROLLBACK );
+		} catch ( Exception $ex ) {
+			// Already logged; move on...
+			$e = $e ?: $ex;
+		}
+
+		return $e;
 	}
 
 	/**
@@ -1413,14 +1531,27 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		list( $startOpts, $useIndex, $preLimitTail, $postLimitTail, $ignoreIndex ) =
 			$this->makeSelectOptions( $options );
 
-		if ( !empty( $conds ) ) {
-			if ( is_array( $conds ) ) {
-				$conds = $this->makeList( $conds, self::LIST_AND );
-			}
+		if ( is_array( $conds ) ) {
+			$conds = $this->makeList( $conds, self::LIST_AND );
+		}
+
+		if ( $conds === null || $conds === false ) {
+			$this->queryLogger->warning(
+				__METHOD__
+				. ' called from '
+				. $fname
+				. ' with incorrect parameters: $conds must be a string or an array'
+			);
+			$conds = '';
+		}
+
+		if ( $conds === '' ) {
+			$sql = "SELECT $startOpts $vars $from $useIndex $ignoreIndex $preLimitTail";
+		} elseif ( is_string( $conds ) ) {
 			$sql = "SELECT $startOpts $vars $from $useIndex $ignoreIndex " .
 				"WHERE $conds $preLimitTail";
 		} else {
-			$sql = "SELECT $startOpts $vars $from $useIndex $ignoreIndex $preLimitTail";
+			throw new DBUnexpectedError( $this, __METHOD__ . ' called with incorrect parameters' );
 		}
 
 		if ( isset( $options['LIMIT'] ) ) {
@@ -1457,10 +1588,12 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	public function estimateRowCount(
-		$table, $vars = '*', $conds = '', $fname = __METHOD__, $options = []
+		$table, $vars = '*', $conds = '', $fname = __METHOD__, $options = [], $join_conds = []
 	) {
 		$rows = 0;
-		$res = $this->select( $table, [ 'rowcount' => 'COUNT(*)' ], $conds, $fname, $options );
+		$res = $this->select(
+			$table, [ 'rowcount' => 'COUNT(*)' ], $conds, $fname, $options, $join_conds
+		);
 
 		if ( $res ) {
 			$row = $this->fetchRow( $res );
@@ -1793,8 +1926,46 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		return '(' . $this->selectSQLText( $table, $fld, $conds, null, [], $join_conds ) . ')';
 	}
 
+	public function buildSubstring( $input, $startPosition, $length = null ) {
+		$this->assertBuildSubstringParams( $startPosition, $length );
+		$functionBody = "$input FROM $startPosition";
+		if ( $length !== null ) {
+			$functionBody .= " FOR $length";
+		}
+		return 'SUBSTRING(' . $functionBody . ')';
+	}
+
+	/**
+	 * Check type and bounds for parameters to self::buildSubstring()
+	 *
+	 * All supported databases have substring functions that behave the same for
+	 * positive $startPosition and non-negative $length, but behaviors differ when
+	 * given 0 or negative $startPosition or negative $length. The simplest
+	 * solution to that is to just forbid those values.
+	 *
+	 * @param int $startPosition
+	 * @param int|null $length
+	 * @since 1.31
+	 */
+	protected function assertBuildSubstringParams( $startPosition, $length ) {
+		if ( !is_int( $startPosition ) || $startPosition <= 0 ) {
+			throw new InvalidArgumentException(
+				'$startPosition must be a positive integer'
+			);
+		}
+		if ( !( is_int( $length ) && $length >= 0 || $length === null ) ) {
+			throw new InvalidArgumentException(
+				'$length must be null or an integer greater than or equal to 0'
+			);
+		}
+	}
+
 	public function buildStringCast( $field ) {
 		return $field;
+	}
+
+	public function buildIntegerCast( $field ) {
+		return 'CAST( ' . $field . ' AS INTEGER )';
 	}
 
 	public function databasesAreIndependent() {
@@ -2097,8 +2268,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		}
 
 		// We can't separate explicit JOIN clauses with ',', use ' ' for those
-		$implicitJoins = !empty( $ret ) ? implode( ',', $ret ) : "";
-		$explicitJoins = !empty( $retJOIN ) ? implode( ' ', $retJOIN ) : "";
+		$implicitJoins = $ret ? implode( ',', $ret ) : "";
+		$explicitJoins = $retJOIN ? implode( ' ', $retJOIN ) : "";
 
 		// Compile our final table clause
 		return implode( ' ', [ $implicitJoins, $explicitJoins ] );
@@ -2111,7 +2282,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @return string
 	 */
 	protected function indexName( $index ) {
-		return $index;
+		return isset( $this->indexAliases[$index] )
+			? $this->indexAliases[$index]
+			: $index;
 	}
 
 	public function addQuotes( $s ) {
@@ -2244,11 +2417,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			$rows = [ $rows ];
 		}
 
-		$useTrx = !$this->trxLevel;
-		if ( $useTrx ) {
-			$this->begin( $fname, self::TRANSACTION_INTERNAL );
-		}
 		try {
+			$this->startAtomic( $fname );
 			$affectedRowCount = 0;
 			foreach ( $rows as $row ) {
 				// Delete rows which collide with this one
@@ -2281,17 +2451,12 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 				$this->insert( $table, $row, $fname );
 				$affectedRowCount += $this->affectedRows();
 			}
+			$this->endAtomic( $fname );
+			$this->affectedRowCount = $affectedRowCount;
 		} catch ( Exception $e ) {
-			if ( $useTrx ) {
-				$this->rollback( $fname, self::FLUSHING_INTERNAL );
-			}
+			$this->rollback( $fname, self::FLUSHING_INTERNAL );
 			throw $e;
 		}
-		if ( $useTrx ) {
-			$this->commit( $fname, self::FLUSHING_INTERNAL );
-		}
-
-		$this->affectedRowCount = $affectedRowCount;
 	}
 
 	/**
@@ -2357,11 +2522,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		}
 
 		$affectedRowCount = 0;
-		$useTrx = !$this->trxLevel;
-		if ( $useTrx ) {
-			$this->begin( $fname, self::TRANSACTION_INTERNAL );
-		}
 		try {
+			$this->startAtomic( $fname );
 			# Update any existing conflicting row(s)
 			if ( $where !== false ) {
 				$ok = $this->update( $table, $set, $where, $fname );
@@ -2372,16 +2534,12 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			# Now insert any non-conflicting row(s)
 			$ok = $this->insert( $table, $rows, $fname, [ 'IGNORE' ] ) && $ok;
 			$affectedRowCount += $this->affectedRows();
+			$this->endAtomic( $fname );
+			$this->affectedRowCount = $affectedRowCount;
 		} catch ( Exception $e ) {
-			if ( $useTrx ) {
-				$this->rollback( $fname, self::FLUSHING_INTERNAL );
-			}
+			$this->rollback( $fname, self::FLUSHING_INTERNAL );
 			throw $e;
 		}
-		if ( $useTrx ) {
-			$this->commit( $fname, self::FLUSHING_INTERNAL );
-		}
-		$this->affectedRowCount = $affectedRowCount;
 
 		return $ok;
 	}
@@ -2439,11 +2597,16 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		return $this->query( $sql, $fname );
 	}
 
-	public function insertSelect(
+	final public function insertSelect(
 		$destTable, $srcTable, $varMap, $conds,
 		$fname = __METHOD__, $insertOptions = [], $selectOptions = [], $selectJoinConds = []
 	) {
-		if ( $this->cliMode ) {
+		static $hints = [ 'NO_AUTO_COLUMNS' ];
+
+		$insertOptions = (array)$insertOptions;
+		$selectOptions = (array)$selectOptions;
+
+		if ( $this->cliMode && $this->isInsertSelectSafe( $insertOptions, $selectOptions ) ) {
 			// For massive migrations with downtime, we don't want to select everything
 			// into memory and OOM, so do all this native on the server side if possible.
 			return $this->nativeInsertSelect(
@@ -2452,7 +2615,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 				$varMap,
 				$conds,
 				$fname,
-				$insertOptions,
+				array_diff( $insertOptions, $hints ),
 				$selectOptions,
 				$selectJoinConds
 			);
@@ -2464,10 +2627,20 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			$varMap,
 			$conds,
 			$fname,
-			$insertOptions,
+			array_diff( $insertOptions, $hints ),
 			$selectOptions,
 			$selectJoinConds
 		);
+	}
+
+	/**
+	 * @param array $insertOptions INSERT options
+	 * @param array $selectOptions SELECT options
+	 * @return bool Whether an INSERT SELECT with these options will be replication safe
+	 * @since 1.31
+	 */
+	protected function isInsertSelectSafe( array $insertOptions, array $selectOptions ) {
+		return true;
 	}
 
 	/**
@@ -2504,12 +2677,41 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			return false;
 		}
 
-		$rows = [];
-		foreach ( $res as $row ) {
-			$rows[] = (array)$row;
-		}
+		try {
+			$affectedRowCount = 0;
+			$this->startAtomic( $fname );
+			$rows = [];
+			$ok = true;
+			foreach ( $res as $row ) {
+				$rows[] = (array)$row;
 
-		return $this->insert( $destTable, $rows, $fname, $insertOptions );
+				// Avoid inserts that are too huge
+				if ( count( $rows ) >= $this->nonNativeInsertSelectBatchSize ) {
+					$ok = $this->insert( $destTable, $rows, $fname, $insertOptions );
+					if ( !$ok ) {
+						break;
+					}
+					$affectedRowCount += $this->affectedRows();
+					$rows = [];
+				}
+			}
+			if ( $rows && $ok ) {
+				$ok = $this->insert( $destTable, $rows, $fname, $insertOptions );
+				if ( $ok ) {
+					$affectedRowCount += $this->affectedRows();
+				}
+			}
+			if ( $ok ) {
+				$this->endAtomic( $fname );
+				$this->affectedRowCount = $affectedRowCount;
+			} else {
+				$this->rollback( $fname, self::FLUSHING_INTERNAL );
+			}
+			return $ok;
+		} catch ( Exception $e ) {
+			$this->rollback( $fname, self::FLUSHING_INTERNAL );
+			throw $e;
+		}
 	}
 
 	/**
@@ -3138,6 +3340,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		} catch ( Exception $e ) {
 			// already logged; let LoadBalancer move on during mass-rollback
 		}
+
+		$this->affectedRowCount = 0; // for the sake of consistency
 	}
 
 	/**
@@ -3735,12 +3939,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		$this->tableAliases = $aliases;
 	}
 
-	/**
-	 * @return bool Whether a DB user is required to access the DB
-	 * @since 1.28
-	 */
-	protected function requiresDatabaseUser() {
-		return true;
+	public function setIndexAliases( array $aliases ) {
+		$this->indexAliases = $aliases;
 	}
 
 	/**
@@ -3750,7 +3950,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * This catches broken callers than catch and ignore disconnection exceptions.
 	 * Unlike checking isOpen(), this is safe to call inside of open().
 	 *
-	 * @return resource|object
+	 * @return mixed
 	 * @throws DBUnexpectedError
 	 * @since 1.26
 	 */
