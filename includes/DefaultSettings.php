@@ -3311,9 +3311,10 @@ $wgAllowUserJs = false;
 $wgAllowUserCss = false;
 
 /**
- * Allow user-preferences implemented in CSS?
- * This allows users to customise the site appearance to a greater
- * degree; disabling it will improve page load times.
+ * Allow style-related user-preferences?
+ *
+ * This controls whether the `editfont` and `underline` preferences
+ * are availabe to users.
  */
 $wgAllowUserCssPrefs = true;
 
@@ -4438,7 +4439,6 @@ $wgEnableMagicLinks = [
  *
  * This variable can have the following values:
  * - 'any': all pages as considered as valid articles
- * - 'comma': the page must contain a comma to be considered valid
  * - 'link': the page must contain a [[wiki link]] to be considered valid
  *
  * See also See https://www.mediawiki.org/wiki/Manual:Article_count

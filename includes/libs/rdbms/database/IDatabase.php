@@ -19,6 +19,7 @@
  */
 namespace Wikimedia\Rdbms;
 
+use InvalidArgumentException;
 use Wikimedia\ScopedCallback;
 use RuntimeException;
 use UnexpectedValueException;
@@ -356,7 +357,7 @@ interface IDatabase {
 	public function getType();
 
 	/**
-	 * Open a connection to the database. Usually aborts on failure
+	 * Open a new connection to the database (closing any existing one)
 	 *
 	 * @param string $server Database server host
 	 * @param string $user Database user name
@@ -491,8 +492,11 @@ interface IDatabase {
 	public function getServerVersion();
 
 	/**
-	 * Closes a database connection.
-	 * if it is open : commits any open transactions
+	 * Close the database connection
+	 *
+	 * This should only be called after any transactions have been resolved,
+	 * aside from read-only transactions (assuming no callbacks are registered).
+	 * If a transaction is still open anyway, it will be committed if possible.
 	 *
 	 * @throws DBError
 	 * @return bool Operation success. true if already closed.
@@ -821,11 +825,12 @@ interface IDatabase {
 	 * @param array|string $conds Filters on the table
 	 * @param string $fname Function name for profiling
 	 * @param array $options Options for select
+	 * @param array|string $join_conds Join conditions
 	 * @return int Row count
 	 * @throws DBError
 	 */
 	public function estimateRowCount(
-		$table, $vars = '*', $conds = '', $fname = __METHOD__, $options = []
+		$table, $vars = '*', $conds = '', $fname = __METHOD__, $options = [], $join_conds = []
 	);
 
 	/**
@@ -1051,11 +1056,32 @@ interface IDatabase {
 	);
 
 	/**
+	 * Build a SUBSTRING function.
+	 *
+	 * Behavior for non-ASCII values is undefined.
+	 *
+	 * @param string $input Field name
+	 * @param int $startPosition Positive integer
+	 * @param int|null $length Non-negative integer length or null for no limit
+	 * @throws InvalidArgumentException
+	 * @return string SQL text
+	 * @since 1.31
+	 */
+	public function buildSubString( $input, $startPosition, $length = null );
+
+	/**
 	 * @param string $field Field or column to cast
 	 * @return string
 	 * @since 1.28
 	 */
 	public function buildStringCast( $field );
+
+	/**
+	 * @param string $field Field or column to cast
+	 * @return string
+	 * @since 1.31
+	 */
+	public function buildIntegerCast( $field );
 
 	/**
 	 * Returns true if DBs are assumed to be on potentially different servers
@@ -1276,7 +1302,9 @@ interface IDatabase {
 	 * @param string $fname The function name of the caller, from __METHOD__
 	 *
 	 * @param array $insertOptions Options for the INSERT part of the query, see
-	 *    IDatabase::insert() for details.
+	 *    IDatabase::insert() for details. Also, one additional option is
+	 *    available: pass 'NO_AUTO_COLUMNS' to hint that the query does not use
+	 *    an auto-increment or sequence to determine any column values.
 	 * @param array $selectOptions Options for the SELECT part of the query, see
 	 *    IDatabase::select() for details.
 	 * @param array $selectJoinConds Join conditions for the SELECT part of the query, see
@@ -1903,6 +1931,21 @@ interface IDatabase {
 	 * @since 1.28
 	 */
 	public function setTableAliases( array $aliases );
+
+	/**
+	 * Convert certain index names to alternative names before querying the DB
+	 *
+	 * Note that this applies to indexes regardless of the table they belong to.
+	 *
+	 * This can be employed when an index was renamed X => Y in code, but the new Y-named
+	 * indexes were not yet built on all DBs. After all the Y-named ones are added by the DBA,
+	 * the aliases can be removed, and then the old X-named indexes dropped.
+	 *
+	 * @param string[] $aliases
+	 * @return mixed
+	 * @since 1.31
+	 */
+	public function setIndexAliases( array $aliases );
 }
 
 class_alias( IDatabase::class, 'IDatabase' );

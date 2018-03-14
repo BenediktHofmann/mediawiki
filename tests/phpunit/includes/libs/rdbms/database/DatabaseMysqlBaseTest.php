@@ -23,91 +23,8 @@
  * @copyright © 2013 Wikimedia Foundation and contributors
  */
 
-use Wikimedia\Rdbms\TransactionProfiler;
-use Wikimedia\Rdbms\DatabaseDomain;
 use Wikimedia\Rdbms\MySQLMasterPos;
-use Wikimedia\Rdbms\DatabaseMysqlBase;
-use Wikimedia\Rdbms\DatabaseMysqli;
-use Wikimedia\Rdbms\Database;
-
-/**
- * Fake class around abstract class so we can call concrete methods.
- */
-class FakeDatabaseMysqlBase extends DatabaseMysqlBase {
-	// From Database
-	function __construct() {
-		$this->profiler = new ProfilerStub( [] );
-		$this->trxProfiler = new TransactionProfiler();
-		$this->cliMode = true;
-		$this->connLogger = new \Psr\Log\NullLogger();
-		$this->queryLogger = new \Psr\Log\NullLogger();
-		$this->errorLogger = function ( Exception $e ) {
-			wfWarn( get_class( $e ) . ": {$e->getMessage()}" );
-		};
-		$this->currentDomain = DatabaseDomain::newUnspecified();
-	}
-
-	protected function closeConnection() {
-	}
-
-	protected function doQuery( $sql ) {
-	}
-
-	protected function fetchAffectedRowCount() {
-	}
-
-	// From DatabaseMysqli
-	protected function mysqlConnect( $realServer ) {
-	}
-
-	protected function mysqlSetCharset( $charset ) {
-	}
-
-	protected function mysqlFreeResult( $res ) {
-	}
-
-	protected function mysqlFetchObject( $res ) {
-	}
-
-	protected function mysqlFetchArray( $res ) {
-	}
-
-	protected function mysqlNumRows( $res ) {
-	}
-
-	protected function mysqlNumFields( $res ) {
-	}
-
-	protected function mysqlFieldName( $res, $n ) {
-	}
-
-	protected function mysqlFieldType( $res, $n ) {
-	}
-
-	protected function mysqlDataSeek( $res, $row ) {
-	}
-
-	protected function mysqlError( $conn = null ) {
-	}
-
-	protected function mysqlFetchField( $res, $n ) {
-	}
-
-	protected function mysqlRealEscapeString( $s ) {
-	}
-
-	function insertId() {
-	}
-
-	function lastErrno() {
-	}
-
-	function affectedRows() {
-	}
-
-	function getServerVersion() {
-	}
-}
+use Wikimedia\TestingAccessWrapper;
 
 class DatabaseMysqlBaseTest extends PHPUnit\Framework\TestCase {
 
@@ -118,7 +35,11 @@ class DatabaseMysqlBaseTest extends PHPUnit\Framework\TestCase {
 	 * @covers Wikimedia\Rdbms\DatabaseMysqlBase::addIdentifierQuotes
 	 */
 	public function testAddIdentifierQuotes( $expected, $in ) {
-		$db = new FakeDatabaseMysqlBase();
+		$db = $this->getMockBuilder( DatabaseMysqli::class )
+			->disableOriginalConstructor()
+			->setMethods( null )
+			->getMock();
+
 		$quoted = $db->addIdentifierQuotes( $in );
 		$this->assertEquals( $expected, $quoted );
 	}
@@ -477,26 +398,6 @@ class DatabaseMysqlBaseTest extends PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * @expectedException UnexpectedValueException
-	 * @covers Wikimedia\Rdbms\Database::setFlag
-	 */
-	public function testDBOIgnoreSet() {
-		$db = new FakeDatabaseMysqlBase();
-
-		$db->setFlag( Database::DBO_IGNORE );
-	}
-
-	/**
-	 * @expectedException UnexpectedValueException
-	 * @covers Wikimedia\Rdbms\Database::clearFlag
-	 */
-	public function testDBOIgnoreClear() {
-		$db = new FakeDatabaseMysqlBase();
-
-		$db->clearFlag( Database::DBO_IGNORE );
-	}
-
-	/**
 	 * @covers Wikimedia\Rdbms\MySQLMasterPos
 	 */
 	public function testSerialize() {
@@ -509,5 +410,176 @@ class DatabaseMysqlBaseTest extends PHPUnit\Framework\TestCase {
 		$roundtripPos = unserialize( serialize( $pos ) );
 
 		$this->assertEquals( $pos, $roundtripPos );
+	}
+
+	/**
+	 * @covers Wikimedia\Rdbms\DatabaseMysqlBase::isInsertSelectSafe
+	 * @dataProvider provideInsertSelectCases
+	 */
+	public function testInsertSelectIsSafe( $insertOpts, $selectOpts, $row, $safe ) {
+		$db = $this->getMockBuilder( DatabaseMysqli::class )
+			->disableOriginalConstructor()
+			->setMethods( [ 'getReplicationSafetyInfo' ] )
+			->getMock();
+		$db->method( 'getReplicationSafetyInfo' )->willReturn( (object)$row );
+		$dbw = TestingAccessWrapper::newFromObject( $db );
+
+		$this->assertEquals( $safe, $dbw->isInsertSelectSafe( $insertOpts, $selectOpts ) );
+	}
+
+	public function provideInsertSelectCases() {
+		return [
+			[
+				[],
+				[],
+				[
+					'innodb_autoinc_lock_mode' => '2',
+					'binlog_format' => 'ROW',
+				],
+				true
+			],
+			[
+				[],
+				[ 'LIMIT' => 100 ],
+				[
+					'innodb_autoinc_lock_mode' => '2',
+					'binlog_format' => 'ROW',
+				],
+				true
+			],
+			[
+				[],
+				[ 'LIMIT' => 100 ],
+				[
+					'innodb_autoinc_lock_mode' => '0',
+					'binlog_format' => 'STATEMENT',
+				],
+				false
+			],
+			[
+				[],
+				[],
+				[
+					'innodb_autoinc_lock_mode' => '2',
+					'binlog_format' => 'STATEMENT',
+				],
+				false
+			],
+			[
+				[ 'NO_AUTO_COLUMNS' ],
+				[ 'LIMIT' => 100 ],
+				[
+					'innodb_autoinc_lock_mode' => '0',
+					'binlog_format' => 'STATEMENT',
+				],
+				false
+			],
+			[
+				[],
+				[],
+				[
+					'innodb_autoinc_lock_mode' => 0,
+					'binlog_format' => 'STATEMENT',
+				],
+				true
+			],
+			[
+				[ 'NO_AUTO_COLUMNS' ],
+				[],
+				[
+					'innodb_autoinc_lock_mode' => 2,
+					'binlog_format' => 'STATEMENT',
+				],
+				true
+			],
+			[
+				[ 'NO_AUTO_COLUMNS' ],
+				[],
+				[
+					'innodb_autoinc_lock_mode' => 0,
+					'binlog_format' => 'STATEMENT',
+				],
+				true
+			],
+
+		];
+	}
+
+	/**
+	 * @covers \Wikimedia\Rdbms\DatabaseMysqlBase::buildIntegerCast
+	 */
+	public function testBuildIntegerCast() {
+		$db = $this->getMockBuilder( DatabaseMysqli::class )
+			->disableOriginalConstructor()
+			->setMethods( null )
+			->getMock();
+		$output = $db->buildIntegerCast( 'fieldName' );
+		$this->assertSame( 'CAST( fieldName AS SIGNED )', $output );
+	}
+
+	/*
+	 * @covers Wikimedia\Rdbms\Database::setIndexAliases
+	 */
+	public function testIndexAliases() {
+		$db = $this->getMockBuilder( DatabaseMysqli::class )
+			->disableOriginalConstructor()
+			->setMethods( [ 'mysqlRealEscapeString' ] )
+			->getMock();
+		$db->method( 'mysqlRealEscapeString' )->willReturnCallback(
+			function ( $s ) {
+				return str_replace( "'", "\\'", $s );
+			}
+		);
+
+		$db->setIndexAliases( [ 'a_b_idx' => 'a_c_idx' ] );
+		$sql = $db->selectSQLText(
+			'zend', 'field', [ 'a' => 'x' ], __METHOD__, [ 'USE INDEX' => 'a_b_idx' ] );
+
+		$this->assertEquals(
+			"SELECT  field  FROM `zend`  FORCE INDEX (a_c_idx)  WHERE a = 'x'  ",
+			$sql
+		);
+
+		$db->setIndexAliases( [] );
+		$sql = $db->selectSQLText(
+			'zend', 'field', [ 'a' => 'x' ], __METHOD__, [ 'USE INDEX' => 'a_b_idx' ] );
+
+		$this->assertEquals(
+			"SELECT  field  FROM `zend`  FORCE INDEX (a_b_idx)  WHERE a = 'x'  ",
+			$sql
+		);
+	}
+
+	/**
+	 * @covers Wikimedia\Rdbms\Database::setTableAliases
+	 */
+	public function testTableAliases() {
+		$db = $this->getMockBuilder( DatabaseMysqli::class )
+			->disableOriginalConstructor()
+			->setMethods( [ 'mysqlRealEscapeString' ] )
+			->getMock();
+		$db->method( 'mysqlRealEscapeString' )->willReturnCallback(
+			function ( $s ) {
+				return str_replace( "'", "\\'", $s );
+			}
+		);
+
+		$db->setTableAliases( [
+			'meow' => [ 'dbname' => 'feline', 'schema' => null, 'prefix' => 'cat_' ]
+		] );
+		$sql = $db->selectSQLText( 'meow', 'field', [ 'a' => 'x' ], __METHOD__ );
+
+		$this->assertEquals(
+			"SELECT  field  FROM `feline`.`cat_meow`    WHERE a = 'x'  ",
+			$sql
+		);
+
+		$db->setTableAliases( [] );
+		$sql = $db->selectSQLText( 'meow', 'field', [ 'a' => 'x' ], __METHOD__ );
+
+		$this->assertEquals(
+			"SELECT  field  FROM `meow`    WHERE a = 'x'  ",
+			$sql
+		);
 	}
 }
