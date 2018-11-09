@@ -1,8 +1,7 @@
-'use strict';
-const Page = require( './page' );
+const Page = require( 'wdio-mediawiki/Page' ),
+	Api = require( 'wdio-mediawiki/Api' );
 
 class CreateAccountPage extends Page {
-
 	get username() { return browser.element( '#wpName2' ); }
 	get password() { return browser.element( '#wpPassword2' ); }
 	get confirmPassword() { return browser.element( '#wpRetype' ); }
@@ -10,7 +9,7 @@ class CreateAccountPage extends Page {
 	get heading() { return browser.element( '#firstHeading' ); }
 
 	open() {
-		super.open( 'Special:CreateAccount' );
+		super.openTitle( 'Special:CreateAccount' );
 	}
 
 	createAccount( username, password ) {
@@ -21,57 +20,10 @@ class CreateAccountPage extends Page {
 		this.create.click();
 	}
 
+	// @deprecated Use wdio-mediawiki/Api#createAccount() instead.
 	apiCreateAccount( username, password ) {
-		const url = require( 'url' ), // https://nodejs.org/docs/latest/api/url.html
-			baseUrl = url.parse( browser.options.baseUrl ), // http://webdriver.io/guide/testrunner/browserobject.html
-			Bot = require( 'nodemw' ), // https://github.com/macbre/nodemw
-			client = new Bot( {
-				protocol: baseUrl.protocol,
-				server: baseUrl.hostname,
-				port: baseUrl.port,
-				path: baseUrl.path,
-				debug: false
-			} );
-
-		return new Promise( ( resolve, reject ) => {
-			client.api.call(
-				{
-					action: 'query',
-					meta: 'tokens',
-					type: 'createaccount'
-				},
-				/**
-				 * @param {Error|null} err
-				 * @param {Object} info Processed query result
-				 * @param {Object} next More results?
-				 * @param {Object} data Raw data
-				 */
-				function ( err, info, next, data ) {
-					if ( err ) {
-						reject( err );
-						return;
-					}
-					client.api.call( {
-						action: 'createaccount',
-						createreturnurl: browser.options.baseUrl,
-						createtoken: data.query.tokens.createaccounttoken,
-						username: username,
-						password: password,
-						retype: password
-					}, function ( err ) {
-						if ( err ) {
-							reject( err );
-							return;
-						}
-						resolve();
-					}, 'POST' );
-				},
-				'POST'
-			);
-
-		} );
-
+		return Api.createAccount( username, password );
 	}
-
 }
+
 module.exports = new CreateAccountPage();

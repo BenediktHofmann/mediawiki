@@ -1,15 +1,14 @@
-'use strict';
-const Page = require( './page' );
+const Page = require( 'wdio-mediawiki/Page' ),
+	Api = require( 'wdio-mediawiki/Api' );
 
 class EditPage extends Page {
-
 	get content() { return browser.element( '#wpTextbox1' ); }
 	get displayedContent() { return browser.element( '#mw-content-text' ); }
 	get heading() { return browser.element( '#firstHeading' ); }
 	get save() { return browser.element( '#wpSave' ); }
 
-	openForEditing( name ) {
-		super.open( name + '&action=edit' );
+	openForEditing( title ) {
+		super.openTitle( title, { action: 'edit' } );
 	}
 
 	edit( name, content ) {
@@ -18,35 +17,10 @@ class EditPage extends Page {
 		this.save.click();
 	}
 
+	// @deprecated Use wdio-mediawiki/Api#edit() instead.
 	apiEdit( name, content ) {
-		const url = require( 'url' ), // https://nodejs.org/docs/latest/api/url.html
-			baseUrl = url.parse( browser.options.baseUrl ), // http://webdriver.io/guide/testrunner/browserobject.html
-			Bot = require( 'nodemw' ), // https://github.com/macbre/nodemw
-			client = new Bot( {
-				protocol: baseUrl.protocol,
-				server: baseUrl.hostname,
-				port: baseUrl.port,
-				path: baseUrl.path,
-				username: browser.options.username,
-				password: browser.options.password,
-				debug: false
-			} );
-
-		return new Promise( ( resolve, reject ) => {
-			client.logIn( function ( err ) {
-				if ( err ) {
-					console.log( err );
-					return reject( err );
-				}
-				client.edit( name, content, `Created page with "${content}"`, function ( err ) {
-					if ( err ) {
-						return reject( err );
-					}
-					resolve();
-				} );
-			} );
-		} );
+		return Api.edit( name, content );
 	}
-
 }
+
 module.exports = new EditPage();

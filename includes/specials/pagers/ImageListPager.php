@@ -23,7 +23,7 @@
  * @ingroup Pager
  */
 use MediaWiki\MediaWikiServices;
-use Wikimedia\Rdbms\ResultWrapper;
+use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\FakeResultWrapper;
 
 class ImageListPager extends TablePager {
@@ -159,6 +159,9 @@ class ImageListPager extends TablePager {
 	}
 
 	/**
+	 * The array keys (but not the array values) are used in sql. Phan
+	 * gets confused by this, so mark this method as being ok for sql in general.
+	 * @return-taint onlysafefor_sql
 	 * @return array
 	 */
 	function getFieldNames() {
@@ -356,8 +359,8 @@ class ImageListPager extends TablePager {
 	 *
 	 * Note: This will throw away some results
 	 *
-	 * @param ResultWrapper $res1
-	 * @param ResultWrapper $res2
+	 * @param IResultWrapper $res1
+	 * @param IResultWrapper $res2
 	 * @param int $limit
 	 * @param bool $ascending See note about $asc in $this->reallyDoQuery
 	 * @return FakeResultWrapper $res1 and $res2 combined
@@ -446,7 +449,7 @@ class ImageListPager extends TablePager {
 					if ( $thumb ) {
 						return $thumb->toHtml( [ 'desc-link' => true ] );
 					} else {
-						return wfMessage( 'thumbnail_error', '' )->escaped();
+						return $this->msg( 'thumbnail_error', '' )->escaped();
 					}
 				} else {
 					return htmlspecialchars( $value );
@@ -519,8 +522,8 @@ class ImageListPager extends TablePager {
 	}
 
 	function getForm() {
-		$fields = [];
-		$fields['limit'] = [
+		$formDescriptor = [];
+		$formDescriptor['limit'] = [
 			'type' => 'select',
 			'name' => 'limit',
 			'label-message' => 'table_pager_limit_label',
@@ -529,7 +532,7 @@ class ImageListPager extends TablePager {
 		];
 
 		if ( !$this->getConfig()->get( 'MiserMode' ) ) {
-			$fields['ilsearch'] = [
+			$formDescriptor['ilsearch'] = [
 				'type' => 'text',
 				'name' => 'ilsearch',
 				'id' => 'mw-ilsearch',
@@ -540,19 +543,17 @@ class ImageListPager extends TablePager {
 			];
 		}
 
-		$this->getOutput()->addModules( 'mediawiki.userSuggest' );
-		$fields['user'] = [
-			'type' => 'text',
+		$formDescriptor['user'] = [
+			'type' => 'user',
 			'name' => 'user',
 			'id' => 'mw-listfiles-user',
 			'label-message' => 'username',
 			'default' => $this->mUserName,
 			'size' => '40',
 			'maxlength' => '255',
-			'cssclass' => 'mw-autocomplete-user', // used by mediawiki.userSuggest
 		];
 
-		$fields['ilshowall'] = [
+		$formDescriptor['ilshowall'] = [
 			'type' => 'check',
 			'name' => 'ilshowall',
 			'id' => 'mw-listfiles-show-all',
@@ -567,17 +568,16 @@ class ImageListPager extends TablePager {
 		unset( $query['ilshowall'] );
 		unset( $query['user'] );
 
-		$form = new HTMLForm( $fields, $this->getContext() );
-
-		$form->setMethod( 'get' );
-		$form->setTitle( $this->getTitle() );
-		$form->setId( 'mw-listfiles-form' );
-		$form->setWrapperLegendMsg( 'listfiles' );
-		$form->setSubmitTextMsg( 'table_pager_limit_submit' );
-		$form->addHiddenFields( $query );
-
-		$form->prepareForm();
-		$form->displayForm( '' );
+		$htmlForm = HTMLForm::factory( 'ooui', $formDescriptor, $this->getContext() );
+		$htmlForm
+			->setMethod( 'get' )
+			->setId( 'mw-listfiles-form' )
+			->setTitle( $this->getTitle() )
+			->setSubmitTextMsg( 'table_pager_limit_submit' )
+			->setWrapperLegendMsg( 'listfiles' )
+			->addHiddenFields( $query )
+			->prepareForm()
+			->displayForm( '' );
 	}
 
 	protected function getTableClass() {

@@ -129,16 +129,40 @@ class OracleUpdater extends DatabaseUpdater {
 
 			// Should have been in 1.30
 			[ 'addTable', 'comment', 'patch-comment-table.sql' ],
+			// This field was added in 1.31, but is put here so it can be used by 'migrateComments'
+			[ 'addField', 'image', 'img_description_id', 'patch-image-img_description_id.sql' ],
+			// Should have been in 1.30
 			[ 'migrateComments' ],
 
 			// 1.31
 			[ 'addTable', 'slots', 'patch-slots.sql' ],
+			[ 'addField', 'slots', 'slot_origin', 'patch-slot-origin.sql' ],
 			[ 'addTable', 'content', 'patch-content.sql' ],
 			[ 'addTable', 'slot_roles', 'patch-slot_roles.sql' ],
 			[ 'addTable', 'content_models', 'patch-content_models.sql' ],
 			[ 'migrateArchiveText' ],
 			[ 'addTable', 'actor', 'patch-actor-table.sql' ],
 			[ 'migrateActors' ],
+			[ 'modifyTable', 'site_stats', 'patch-site_stats-modify.sql' ],
+			[ 'populateArchiveRevId' ],
+			[ 'addIndex', 'recentchanges', 'rc_namespace_title_timestamp',
+				'patch-recentchanges-nttindex.sql' ],
+
+			// 1.32
+			[ 'addTable', 'change_tag_def', 'patch-change_tag_def.sql' ],
+			[ 'populateExternallinksIndex60' ],
+			[ 'runMaintenance', DeduplicateArchiveRevId::class, 'maintenance/deduplicateArchiveRevId.php' ],
+			[ 'addField', 'change_tag', 'ct_tag_id', 'patch-change_tag-tag_id.sql' ],
+			[ 'addIndex', 'archive', 'ar_revid_uniq', 'patch-archive-ar_rev_id-unique.sql' ],
+			[ 'populateContentTables' ],
+			[ 'addIndex', 'recentchanges', 'rc_this_oldid', 'patch-recentchanges-rc_this_oldid-index.sql' ],
+			[ 'dropTable', 'transcache' ],
+			[ 'runMaintenance', PopulateChangeTagDef::class, 'maintenance/populateChangeTagDef.php' ],
+			[ 'addIndex', 'change_tag', 'change_tag_i03',
+				'patch-change_tag-change_tag_rc_tag_id.sql' ],
+			[ 'addField', 'ipblocks', 'ipb_sitewide', 'patch-ipb_sitewide.sql' ],
+			[ 'addTable', 'ipblocks_restrictions', 'patch-ipblocks_restrictions-table.sql' ],
+			[ 'migrateImageCommentTemp' ],
 
 			// KEEP THIS AT THE BOTTOM!!
 			[ 'doRebuildDuplicateFunction' ],

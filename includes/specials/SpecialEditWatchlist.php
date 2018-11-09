@@ -160,6 +160,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 		} elseif ( $this->toc !== false ) {
 			$out->prependHTML( $this->toc );
 			$out->addModules( 'mediawiki.toc' );
+			$out->addModuleStyles( 'mediawiki.toc.styles' );
 		}
 	}
 
@@ -458,8 +459,58 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 	 * Add a list of targets to a user's watchlist
 	 *
 	 * @param string[]|LinkTarget[] $targets
+	 * @return bool
+	 * @throws FatalError
+	 * @throws MWException
 	 */
-	private function watchTitles( $targets ) {
+	private function watchTitles( array $targets ) {
+		return MediaWikiServices::getInstance()->getWatchedItemStore()
+			->addWatchBatchForUser( $this->getUser(), $this->getExpandedTargets( $targets ) )
+			&& $this->runWatchUnwatchCompleteHook( 'Watch', $targets );
+	}
+
+	/**
+	 * Remove a list of titles from a user's watchlist
+	 *
+	 * $titles can be an array of strings or Title objects; the former
+	 * is preferred, since Titles are very memory-heavy
+	 *
+	 * @param string[]|LinkTarget[] $targets
+	 *
+	 * @return bool
+	 * @throws FatalError
+	 * @throws MWException
+	 */
+	private function unwatchTitles( array $targets ) {
+		return MediaWikiServices::getInstance()->getWatchedItemStore()
+			->removeWatchBatchForUser( $this->getUser(), $this->getExpandedTargets( $targets ) )
+			&& $this->runWatchUnwatchCompleteHook( 'Unwatch', $targets );
+	}
+
+	/**
+	 * @param string $action
+	 *   Can be "Watch" or "Unwatch"
+	 * @param string[]|LinkTarget[] $targets
+	 * @return bool
+	 * @throws FatalError
+	 * @throws MWException
+	 */
+	private function runWatchUnwatchCompleteHook( $action, $targets ) {
+		foreach ( $targets as $target ) {
+			$title = $target instanceof TitleValue ?
+				Title::newFromTitleValue( $target ) :
+				Title::newFromText( $target );
+			$page = WikiPage::factory( $title );
+			Hooks::run( $action . 'ArticleComplete', [ $this->getUser(), &$page ] );
+		}
+		return true;
+	}
+
+	/**
+	 * @param string[]|LinkTarget[] $targets
+	 * @return TitleValue[]
+	 */
+	private function getExpandedTargets( array $targets ) {
 		$expandedTargets = [];
 		foreach ( $targets as $target ) {
 			if ( !$target instanceof LinkTarget ) {
@@ -476,37 +527,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 			$expandedTargets[] = new TitleValue( MWNamespace::getSubject( $ns ), $dbKey );
 			$expandedTargets[] = new TitleValue( MWNamespace::getTalk( $ns ), $dbKey );
 		}
-
-		MediaWikiServices::getInstance()->getWatchedItemStore()->addWatchBatchForUser(
-			$this->getUser(),
-			$expandedTargets
-		);
-	}
-
-	/**
-	 * Remove a list of titles from a user's watchlist
-	 *
-	 * $titles can be an array of strings or Title objects; the former
-	 * is preferred, since Titles are very memory-heavy
-	 *
-	 * @param array $titles Array of strings, or Title objects
-	 */
-	private function unwatchTitles( $titles ) {
-		$store = MediaWikiServices::getInstance()->getWatchedItemStore();
-
-		foreach ( $titles as $title ) {
-			if ( !$title instanceof Title ) {
-				$title = Title::newFromText( $title );
-			}
-
-			if ( $title instanceof Title ) {
-				$store->removeWatch( $this->getUser(), $title->getSubjectPage() );
-				$store->removeWatch( $this->getUser(), $title->getTalkPage() );
-
-				$page = WikiPage::factory( $title );
-				Hooks::run( 'UnwatchArticleComplete', [ $this->getUser(), &$page ] );
-			}
-		}
+		return $expandedTargets;
 	}
 
 	public function submitNormal( $data ) {
@@ -534,8 +555,6 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 	 * @return HTMLForm
 	 */
 	protected function getNormalForm() {
-		global $wgContLang;
-
 		$fields = [];
 		$count = 0;
 
@@ -574,6 +593,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 		if ( count( $fields ) > 1 && $count > 30 ) {
 			$this->toc = Linker::tocIndent();
 			$tocLength = 0;
+			$contLang = MediaWikiServices::getInstance()->getContentLanguage();
 
 			foreach ( $fields as $data ) {
 				# strip out the 'ns' prefix from the section name:
@@ -581,7 +601,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 
 				$nsText = ( $ns == NS_MAIN )
 					? $this->msg( 'blanknamespace' )->escaped()
-					: htmlspecialchars( $wgContLang->getFormattedNsText( $ns ) );
+					: htmlspecialchars( $contLang->getFormattedNsText( $ns ) );
 				$this->toc .= Linker::tocLine( "editwatchlist-{$data['section']}", $nsText,
 					$this->getLanguage()->formatNum( ++$tocLength ), 1 ) . Linker::tocLineEnd();
 			}
@@ -633,7 +653,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 		if ( $title->getNamespace() == NS_USER && !$title->isSubpage() ) {
 			$tools['contributions'] = $linkRenderer->makeKnownLink(
 				SpecialPage::getTitleFor( 'Contributions', $title->getText() ),
-				$this->msg( 'contributions' )->text()
+				$this->msg( 'contribslink' )->text()
 			);
 		}
 
@@ -667,7 +687,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 		];
 		$context = new DerivativeContext( $this->getContext() );
 		$context->setTitle( $this->getPageTitle( 'raw' ) ); // Reset subpage
-		$form = new HTMLForm( $fields, $context );
+		$form = new OOUIHTMLForm( $fields, $context );
 		$form->setSubmitTextMsg( 'watchlistedit-raw-submit' );
 		# Used message keys: 'accesskey-watchlistedit-raw-submit', 'tooltip-watchlistedit-raw-submit'
 		$form->setSubmitTooltip( 'watchlistedit-raw-submit' );
@@ -686,7 +706,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 	protected function getClearForm() {
 		$context = new DerivativeContext( $this->getContext() );
 		$context->setTitle( $this->getPageTitle( 'clear' ) ); // Reset subpage
-		$form = new HTMLForm( [], $context );
+		$form = new OOUIHTMLForm( [], $context );
 		$form->setSubmitTextMsg( 'watchlistedit-clear-submit' );
 		# Used message keys: 'accesskey-watchlistedit-clear-submit', 'tooltip-watchlistedit-clear-submit'
 		$form->setSubmitTooltip( 'watchlistedit-clear-submit' );

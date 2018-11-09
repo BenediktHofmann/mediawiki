@@ -19,6 +19,7 @@
  * @ingroup Watchlist
  */
 use MediaWiki\Linker\LinkTarget;
+use Wikimedia\Rdbms\DBUnexpectedError;
 
 /**
  * @author Addshore
@@ -192,7 +193,7 @@ interface WatchedItemStoreInterface {
 	public function addWatchBatchForUser( User $user, array $targets );
 
 	/**
-	 * Removes the an entry for the User watching the LinkTarget
+	 * Removes an entry for the User watching the LinkTarget
 	 * Must be called separately for Subject & Talk namespaces
 	 *
 	 * @since 1.31
@@ -209,7 +210,7 @@ interface WatchedItemStoreInterface {
 	/**
 	 * @since 1.31
 	 *
-	 * @param User $user The user to set the timestamp for
+	 * @param User $user The user to set the timestamps for
 	 * @param string|null $timestamp Set the update timestamp to this value
 	 * @param LinkTarget[] $targets List of targets to update. Default to all targets
 	 *
@@ -220,6 +221,15 @@ interface WatchedItemStoreInterface {
 		$timestamp,
 		array $targets = []
 	);
+
+	/**
+	 * Reset all watchlist notificaton timestamps for a user using the job queue
+	 *
+	 * @since 1.31
+	 *
+	 * @param User $user The user to reset the timestamps for
+	 */
+	public function resetAllNotificationTimestampsForUser( User $user );
 
 	/**
 	 * @since 1.31
@@ -246,7 +256,7 @@ interface WatchedItemStoreInterface {
 	 * @param int $oldid The revision id being viewed. If not given or 0, latest revision is
 	 *     assumed.
 	 *
-	 * @return bool success
+	 * @return bool success Whether a job was enqueued
 	 */
 	public function resetNotificationTimestamp( User $user, Title $title, $force = '', $oldid = 0 );
 
@@ -254,7 +264,7 @@ interface WatchedItemStoreInterface {
 	 * @since 1.31
 	 *
 	 * @param User $user
-	 * @param int $unreadLimit
+	 * @param int|null $unreadLimit
 	 *
 	 * @return int|bool The number of unread notifications
 	 *                  true if greater than or equal to $unreadLimit
@@ -305,5 +315,15 @@ interface WatchedItemStoreInterface {
 	 * @param User $user
 	 */
 	public function clearUserWatchedItemsUsingJobQueue( User $user );
+
+	/**
+	 * @since 1.32
+	 *
+	 * @param User $user
+	 * @param LinkTarget[] $targets
+	 *
+	 * @return bool success
+	 */
+	public function removeWatchBatchForUser( User $user, array $targets );
 
 }

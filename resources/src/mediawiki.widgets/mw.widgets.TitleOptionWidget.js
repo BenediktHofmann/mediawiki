@@ -4,7 +4,7 @@
  * @copyright 2011-2015 MediaWiki Widgets Team and others; see AUTHORS.txt
  * @license The MIT License (MIT); see LICENSE.txt
  */
-( function ( $, mw ) {
+( function () {
 
 	/**
 	 * Creates a mw.widgets.TitleOptionWidget object.
@@ -50,6 +50,9 @@
 
 		// Parent constructor
 		mw.widgets.TitleOptionWidget.parent.call( this, config );
+
+		// Remove check icon
+		this.checkIcon.$element.remove();
 
 		// Initialization
 		this.$label.attr( 'href', config.url );
@@ -102,4 +105,4 @@
 
 	OO.inheritClass( mw.widgets.TitleOptionWidget, OO.ui.MenuOptionWidget );
 
-}( jQuery, mediaWiki ) );
+}() );

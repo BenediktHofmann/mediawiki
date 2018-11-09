@@ -22,6 +22,7 @@
  */
 
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\Logger\LoggerFactory;
 
 /**
  * Let users change their email address.
@@ -151,8 +152,6 @@ class SpecialChangeEmail extends FormSpecialPage {
 	 * @return Status
 	 */
 	private function attemptChange( User $user, $newaddr ) {
-		$authManager = AuthManager::singleton();
-
 		if ( $newaddr != '' && !Sanitizer::validateEmail( $newaddr ) ) {
 			return Status::newFatal( 'invalidemailaddress' );
 		}
@@ -166,6 +165,14 @@ class SpecialChangeEmail extends FormSpecialPage {
 		if ( !$status->isGood() ) {
 			return $status;
 		}
+
+		LoggerFactory::getInstance( 'authentication' )->info(
+			'Changing email address for {user} from {oldemail} to {newemail}', [
+				'user' => $user->getName(),
+				'oldemail' => $oldaddr,
+				'newemail' => $newaddr,
+			]
+		);
 
 		Hooks::run( 'PrefsEmailAudit', [ $user, $oldaddr, $newaddr ] );
 

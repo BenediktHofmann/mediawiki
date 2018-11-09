@@ -2,11 +2,12 @@
 
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\SlotRecord;
 
 /**
+ * @group medium
  * @group API
  * @group Database
- * @group medium
  *
  * @covers ApiQueryWatchlist
  */
@@ -23,7 +24,6 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 		parent::setUp();
 		self::$users['ApiQueryWatchlistIntegrationTestUser'] = $this->getMutableTestUser();
 		self::$users['ApiQueryWatchlistIntegrationTestUser2'] = $this->getMutableTestUser();
-		$this->doLogin( 'ApiQueryWatchlistIntegrationTestUser' );
 	}
 
 	private function getLoggedInTestUser() {
@@ -90,17 +90,14 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 		User $patrollingUser
 	) {
 		$title = Title::newFromLinkTarget( $target );
+		$summary = CommentStoreComment::newUnsavedComment( trim( $summary ) );
 		$page = WikiPage::factory( $title );
-		$status = $page->doEditContent(
-			ContentHandler::makeContent( $content, $title ),
-			$summary,
-			0,
-			false,
-			$user
-		);
-		/** @var Revision $rev */
-		$rev = $status->value['revision'];
-		$rc = $rev->getRecentChange();
+
+		$updater = $page->newPageUpdater( $user );
+		$updater->setContent( SlotRecord::MAIN, ContentHandler::makeContent( $content, $title ) );
+		$rev = $updater->saveRevision( $summary );
+
+		$rc = MediaWikiServices::getInstance()->getRevisionStore()->getRecentChange( $rev );
 		$rc->doMarkPatrolled( $patrollingUser, false, [] );
 	}
 
@@ -163,6 +160,9 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 	}
 
 	private function doListWatchlistRequest( array $params = [], $user = null ) {
+		if ( $user === null ) {
+			$user = $this->getLoggedInTestUser();
+		}
 		return $this->doApiRequest(
 			array_merge(
 				[ 'action' => 'query', 'list' => 'watchlist' ],
@@ -176,7 +176,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 			array_merge(
 				[ 'action' => 'query', 'generator' => 'watchlist' ],
 				$params
-			)
+			), null, false, $this->getLoggedInTestUser()
 		);
 	}
 
@@ -629,6 +629,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 					'type' => 'new',
 					'patrolled' => true,
 					'unpatrolled' => false,
+					'autopatrolled' => false,
 				]
 			],
 			$this->getItemsFromApiResponse( $result )
@@ -973,6 +974,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 					'type' => 'new',
 					'patrolled' => true,
 					'unpatrolled' => false,
+					'autopatrolled' => false,
 				]
 			],
 			$this->getItemsFromApiResponse( $resultPatrolled )

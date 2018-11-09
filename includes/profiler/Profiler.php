@@ -115,7 +115,7 @@ abstract class Profiler {
 	 */
 	public function getProfileID() {
 		if ( $this->profileID === false ) {
-			return wfWikiID();
+			return WikiMap::getCurrentWikiDomain()->getId();
 		} else {
 			return $this->profileID;
 		}
@@ -165,7 +165,7 @@ abstract class Profiler {
 	abstract public function scopedProfileIn( $section );
 
 	/**
-	 * @param SectionProfileCallback &$section
+	 * @param SectionProfileCallback|null &$section
 	 */
 	public function scopedProfileOut( SectionProfileCallback &$section = null ) {
 		$section = null;

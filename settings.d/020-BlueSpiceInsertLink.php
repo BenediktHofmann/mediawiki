@@ -1,2 +1,3 @@
 <?php
-wfLoadExtension("BlueSpiceInsertLink");
+
+wfLoadExtension( 'BlueSpiceInsertLink' );

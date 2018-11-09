@@ -73,7 +73,7 @@ class SquidPurgeClient {
 	public function __construct( $server, $options = [] ) {
 		$parts = explode( ':', $server, 2 );
 		$this->host = $parts[0];
-		$this->port = isset( $parts[1] ) ? $parts[1] : 80;
+		$this->port = $parts[1] ?? 80;
 	}
 
 	/**
@@ -211,6 +211,7 @@ class SquidPurgeClient {
 			$request[] = "PURGE $path HTTP/1.1";
 			$request[] = "Host: $host";
 		} else {
+			wfDeprecated( '$wgSquidPurgeUseHostHeader = false', '1.33' );
 			$request[] = "PURGE $url HTTP/1.0";
 		}
 		$request[] = "Connection: Keep-Alive";

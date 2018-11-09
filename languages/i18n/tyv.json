@@ -19,7 +19,6 @@
 	"tog-newpageshidepatrolled": "Чаа арыннарның даңзындан истээн арыннарны чажырары",
 	"tog-usenewrc": "Чаа өскерлиишкиннерниң өөделеттинген даңзызын ажыглаар (JavaScript херек)",
 	"tog-numberheadings": "Эгелерин авто-санаар",
-	"tog-showtoolbar": "Өскертир херекселдерни көргүзер (JavaScript)",
 	"tog-editondblclick": "Арынны өскертирде ийи катап базар (JavaScript)",
 	"tog-watchcreations": "Мээң чаяан арыннарымны хайгаарал даңзымче немээри.",
 	"tog-watchdefault": "Мээң өскерткен арыннарымны хайгаарал даңзымче немээри.",
@@ -748,8 +747,8 @@
 	"whatlinkshere": "Аргышкан арыннар",
 	"whatlinkshere-title": "«$1» деп арынче айтып турар тускай арыннар",
 	"whatlinkshere-page": "Арын:",
-	"linkshere": "Адаандагы арыннар бээр «'''[[:$1]]'''» шөлүдүп турарлар:",
-	"nolinkshere": "'''[[:$1]]''' деп арынче шөлүтткен арыннар чок.",
+	"linkshere": "Адаандагы арыннар бээр «'''$1'''» шөлүдүп турарлар:",
+	"nolinkshere": "'''$1''' деп арынче шөлүтткен арыннар чок.",
 	"isredirect": "шиглидер арын",
 	"istemplate": "киирткен арыннар",
 	"isimage": "файлдың холбаазы",
@@ -981,5 +980,6 @@
 	"duration-weeks": "$1 {{PLURAL:$1|чеди-хонук|чеди-хонук}}",
 	"duration-years": "$1 {{PLURAL:$1|чыл|чыл}}",
 	"duration-decades": "$1 {{PLURAL:$1|1=он хонук|он хонук}}",
-	"duration-centuries": "$1 {{PLURAL:$1|1=чүс чыл|чүс чыл}}"
+	"duration-centuries": "$1 {{PLURAL:$1|1=чүс чыл|чүс чыл}}",
+	"mw-widgets-abandonedit-title": "Бүзүрелдиг-дир бе?"
 }

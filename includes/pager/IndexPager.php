@@ -21,7 +21,7 @@
  * @ingroup Pager
  */
 
-use Wikimedia\Rdbms\ResultWrapper;
+use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
 
 /**
@@ -80,6 +80,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	public $mDefaultLimit = 50;
 	public $mOffset, $mLimit;
 	public $mQueryDone = false;
+	/** @var IDatabase */
 	public $mDb;
 	public $mPastTheEndRow;
 
@@ -124,7 +125,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Result object for the query. Warning: seek before use.
 	 *
-	 * @var ResultWrapper
+	 * @var IResultWrapper
 	 */
 	public $mResult;
 
@@ -232,7 +233,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	}
 
 	/**
-	 * @return ResultWrapper The result wrapper.
+	 * @return IResultWrapper The result wrapper.
 	 */
 	function getResult() {
 		return $this->mResult;
@@ -292,9 +293,9 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * @param bool $isFirst False if there are rows before those fetched (i.e.
 	 *     if a "previous" link would make sense)
 	 * @param int $limit Exact query limit
-	 * @param ResultWrapper $res
+	 * @param IResultWrapper $res
 	 */
-	function extractResultInfo( $isFirst, $limit, ResultWrapper $res ) {
+	function extractResultInfo( $isFirst, $limit, IResultWrapper $res ) {
 		$numRows = $res->numRows();
 		if ( $numRows ) {
 			# Remove any table prefix from index field
@@ -359,7 +360,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * @param string $offset Index offset, inclusive
 	 * @param int $limit Exact query limit
 	 * @param bool $descending Query direction, false for ascending, true for descending
-	 * @return ResultWrapper
+	 * @return IResultWrapper
 	 */
 	public function reallyDoQuery( $offset, $limit, $descending ) {
 		list( $tables, $fields, $conds, $fname, $options, $join_conds ) =
@@ -381,9 +382,9 @@ abstract class IndexPager extends ContextSource implements Pager {
 		$info = $this->getQueryInfo();
 		$tables = $info['tables'];
 		$fields = $info['fields'];
-		$conds = isset( $info['conds'] ) ? $info['conds'] : [];
-		$options = isset( $info['options'] ) ? $info['options'] : [];
-		$join_conds = isset( $info['join_conds'] ) ? $info['join_conds'] : [];
+		$conds = $info['conds'] ?? [];
+		$options = $info['options'] ?? [];
+		$join_conds = $info['join_conds'] ?? [];
 		$sortColumns = array_merge( [ $this->mIndexField ], $this->mExtraSortFields );
 		if ( $descending ) {
 			$options['ORDER BY'] = $sortColumns;
@@ -406,7 +407,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Pre-process results; useful for performing batch existence checks, etc.
 	 *
-	 * @param ResultWrapper $result
+	 * @param IResultWrapper $result
 	 */
 	protected function preprocessResults( $result ) {
 	}
@@ -456,8 +457,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * Make a self-link
 	 *
 	 * @param string $text Text displayed on the link
-	 * @param array $query Associative array of parameter to be in the query string
-	 * @param string $type Link type used to create additional attributes, like "rel", "class" or
+	 * @param array|null $query Associative array of parameter to be in the query string
+	 * @param string|null $type Link type used to create additional attributes, like "rel", "class" or
 	 *  "title". Valid values (non-exhaustive list): 'first', 'last', 'prev', 'next', 'asc', 'desc'.
 	 * @return string HTML fragment
 	 */
@@ -472,7 +473,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 		}
 
 		if ( in_array( $type, [ 'asc', 'desc' ] ) ) {
-			$attrs['title'] = wfMessage( $type == 'asc' ? 'sort-ascending' : 'sort-descending' )->text();
+			$attrs['title'] = $this->msg( $type == 'asc' ? 'sort-ascending' : 'sort-descending' )->text();
 		}
 
 		if ( $type ) {

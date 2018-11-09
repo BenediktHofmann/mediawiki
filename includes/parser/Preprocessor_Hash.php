@@ -206,13 +206,6 @@ class Preprocessor_Hash extends Preprocessor {
 				$search = $searchBase;
 				if ( $stack->top === false ) {
 					$currentClosing = '';
-				} elseif (
-					$stack->top->close === '}-' &&
-					$stack->top->count > 2
-				) {
-					# adjust closing for -{{{...{{
-					$currentClosing = '}';
-					$search .= $currentClosing;
 				} else {
 					$currentClosing = $stack->top->close;
 					$search .= $currentClosing;
@@ -511,6 +504,8 @@ class Preprocessor_Hash extends Preprocessor {
 			} elseif ( $found == 'line-end' ) {
 				$piece = $stack->top;
 				// A heading must be open, otherwise \n wouldn't have been in the search list
+				// FIXME: Don't use assert()
+				// phpcs:ignore MediaWiki.Usage.ForbiddenFunctions.assert
 				assert( $piece->open === "\n" );
 				$part = $piece->getCurrentPart();
 				// Search back through the input to see if it has a proper close.
@@ -589,14 +584,27 @@ class Preprocessor_Hash extends Preprocessor {
 					strspn( $text, $curChar[$curLen - 1], $i + 1 ) + 1 :
 					strspn( $text, $curChar, $i );
 
+				$savedPrefix = '';
+				$lineStart = ( $i > 0 && $text[$i - 1] == "\n" );
+
+				if ( $curChar === "-{" && $count > $curLen ) {
+					// -{ => {{ transition because rightmost wins
+					$savedPrefix = '-';
+					$i++;
+					$curChar = '{';
+					$count--;
+					$rule = $this->rules[$curChar];
+				}
+
 				# we need to add to stack only if opening brace count is enough for one of the rules
 				if ( $count >= $rule['min'] ) {
 					# Add it to the stack
 					$piece = [
 						'open' => $curChar,
 						'close' => $rule['end'],
+						'savedPrefix' => $savedPrefix,
 						'count' => $count,
-						'lineStart' => ( $i > 0 && $text[$i - 1] == "\n" ),
+						'lineStart' => $lineStart,
 					];
 
 					$stack->push( $piece );
@@ -613,7 +621,7 @@ class Preprocessor_Hash extends Preprocessor {
 					}
 				} else {
 					# Add literal brace(s)
-					self::addLiteral( $accum, str_repeat( $curChar, $count ) );
+					self::addLiteral( $accum, $savedPrefix . str_repeat( $curChar, $count ) );
 				}
 				$i += $count;
 			} elseif ( $found == 'close' ) {
@@ -630,10 +638,6 @@ class Preprocessor_Hash extends Preprocessor {
 				# check for maximum matching characters (if there are 5 closing
 				# characters, we will probably need only 3 - depending on the rules)
 				$rule = $this->rules[$piece->open];
-				if ( $piece->close === '}-' && $piece->count > 2 ) {
-					# tweak for -{..{{ }}..}-
-					$rule = $this->rules['{'];
-				}
 				if ( $count > $rule['max'] ) {
 					# The specified maximum exists in the callback array, unless the caller
 					# has made an error
@@ -672,7 +676,9 @@ class Preprocessor_Hash extends Preprocessor {
 
 					# The invocation is at the start of the line if lineStart is set in
 					# the stack, and all opening brackets are used up.
-					if ( $maxCount == $matchingCount && !empty( $piece->lineStart ) ) {
+					if ( $maxCount == $matchingCount &&
+							!empty( $piece->lineStart ) &&
+							strlen( $piece->savedPrefix ) == 0 ) {
 						$children[] = [ '@lineStart', [ 1 ] ];
 					}
 					$titleNode = [ 'title', $titleAccum ];
@@ -711,14 +717,23 @@ class Preprocessor_Hash extends Preprocessor {
 					if ( $piece->count >= $min ) {
 						$stack->push( $piece );
 						$accum =& $stack->getAccum();
+					} elseif ( $piece->count == 1 && $piece->open === '{' && $piece->savedPrefix === '-' ) {
+						$piece->savedPrefix = '';
+						$piece->open = '-{';
+						$piece->count = 2;
+						$piece->close = $this->rules[$piece->open]['end'];
+						$stack->push( $piece );
+						$accum =& $stack->getAccum();
 					} else {
 						$s = substr( $piece->open, 0, -1 );
 						$s .= str_repeat(
 							substr( $piece->open, -1 ),
 							$piece->count - strlen( $s )
 						);
-						self::addLiteral( $accum, $s );
+						self::addLiteral( $accum, $piece->savedPrefix . $s );
 					}
+				} elseif ( $piece->savedPrefix !== '' ) {
+					self::addLiteral( $accum, $piece->savedPrefix );
 				}
 
 				$stackFlags = $stack->getFlags();
@@ -814,7 +829,7 @@ class PPDStackElement_Hash extends PPDStackElement {
 	 */
 	public function breakSyntax( $openingCount = false ) {
 		if ( $this->open == "\n" ) {
-			$accum = $this->parts[0]->out;
+			$accum = array_merge( [ $this->savedPrefix ], $this->parts[0]->out );
 		} else {
 			if ( $openingCount === false ) {
 				$openingCount = $this->count;
@@ -824,7 +839,7 @@ class PPDStackElement_Hash extends PPDStackElement {
 				substr( $this->open, -1 ),
 				$openingCount - strlen( $s )
 			);
-			$accum = [ $s ];
+			$accum = [ $this->savedPrefix . $s ];
 			$lastIndex = 0;
 			$first = true;
 			foreach ( $this->parts as $part ) {
@@ -1073,7 +1088,7 @@ class PPFrame_Hash implements PPFrame {
 			} elseif ( is_array( $contextNode ) ) {
 				// Node descriptor array
 				if ( count( $contextNode ) !== 2 ) {
-					throw new MWException( __METHOD__.
+					throw new MWException( __METHOD__ .
 						': found an array where a node descriptor should be' );
 				}
 				list( $contextName, $contextChildren ) = $contextNode;
@@ -1353,7 +1368,7 @@ class PPFrame_Hash implements PPFrame {
 		if ( $level === false ) {
 			return $this->title->getPrefixedDBkey();
 		} else {
-			return isset( $this->titleCache[$level] ) ? $this->titleCache[$level] : false;
+			return $this->titleCache[$level] ?? false;
 		}
 	}
 
@@ -1687,10 +1702,7 @@ class PPCustomFrame_Hash extends PPFrame_Hash {
 	 * @return string|bool
 	 */
 	public function getArgument( $index ) {
-		if ( !isset( $this->args[$index] ) ) {
-			return false;
-		}
-		return $this->args[$index];
+		return $this->args[$index] ?? false;
 	}
 
 	public function getArguments() {
@@ -1771,7 +1783,7 @@ class PPNode_Hash_Tree implements PPNode {
 				$class = self::class;
 			}
 		} else {
-			throw new MWException( __METHOD__.': invalid node descriptor' );
+			throw new MWException( __METHOD__ . ': invalid node descriptor' );
 		}
 		return new $class( $store, $index );
 	}
@@ -2191,7 +2203,7 @@ class PPNode_Hash_Attr implements PPNode {
 	public function __construct( array $store, $index ) {
 		$descriptor = $store[$index];
 		if ( $descriptor[PPNode_Hash_Tree::NAME][0] !== '@' ) {
-			throw new MWException( __METHOD__.': invalid name in attribute descriptor' );
+			throw new MWException( __METHOD__ . ': invalid name in attribute descriptor' );
 		}
 		$this->name = substr( $descriptor[PPNode_Hash_Tree::NAME], 1 );
 		$this->value = $descriptor[PPNode_Hash_Tree::CHILDREN][0];

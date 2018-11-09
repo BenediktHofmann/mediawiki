@@ -4,11 +4,14 @@ namespace MediaWiki\Sparql;
 use Http;
 use MediaWiki\Http\HttpRequestFactory;
 use MWHttpRequest;
+use PHPUnit4And6Compat;
 
 /**
  * @covers \MediaWiki\Sparql\SparqlClient
  */
 class SparqlClientTest extends \PHPUnit\Framework\TestCase {
+
+	use PHPUnit4And6Compat;
 
 	private function getRequestFactory( $request ) {
 		$requestFactory = $this->getMock( HttpRequestFactory::class );
@@ -102,7 +105,7 @@ JSON;
 				],
 				[
 					'method' => 'GET',
-					'userAgent' => Http::userAgent() ." SparqlClient",
+					'userAgent' => Http::userAgent() . " SparqlClient",
 					'timeout' => 30
 				]
 			],

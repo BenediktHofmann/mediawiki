@@ -248,7 +248,6 @@ CREATE TABLE &mw_prefix.archive (
   ar_id          NUMBER NOT NULL,
   ar_namespace   NUMBER    DEFAULT 0 NOT NULL,
   ar_title       VARCHAR2(255)         NOT NULL,
-  ar_text        CLOB,
   ar_comment     VARCHAR2(255),
   ar_comment_id  NUMBER DEFAULT 0 NOT NULL,
   ar_user        NUMBER          DEFAULT 0 NOT NULL,
@@ -256,9 +255,8 @@ CREATE TABLE &mw_prefix.archive (
   ar_actor       NUMBER          DEFAULT 0 NOT NULL,
   ar_timestamp   TIMESTAMP(6) WITH TIME ZONE  NOT NULL,
   ar_minor_edit  CHAR(1)         DEFAULT '0' NOT NULL,
-  ar_flags       VARCHAR2(255),
-  ar_rev_id      NUMBER,
-  ar_text_id     NUMBER,
+  ar_rev_id      NUMBER NOT NULL,
+  ar_text_id     NUMBER DEFAULT 0 NOT NULL,
   ar_deleted     CHAR(1)      DEFAULT '0' NOT NULL,
   ar_len         NUMBER,
   ar_page_id     NUMBER,
@@ -273,7 +271,7 @@ ALTER TABLE &mw_prefix.archive ADD CONSTRAINT &mw_prefix.archive_fk2 FOREIGN KEY
 CREATE INDEX &mw_prefix.archive_i01 ON &mw_prefix.archive (ar_namespace,ar_title,ar_timestamp);
 CREATE INDEX &mw_prefix.archive_i02 ON &mw_prefix.archive (ar_user_text,ar_timestamp);
 CREATE INDEX &mw_prefix.ar_actor_timestamp ON &mw_prefix.archive (ar_actor,ar_timestamp);
-CREATE INDEX &mw_prefix.archive_i03 ON &mw_prefix.archive (ar_rev_id);
+CREATE UNIQUE INDEX &mw_prefix.archive_i04 ON &mw_prefix.archive (ar_rev_id);
 /*$mw$*/
 CREATE TRIGGER &mw_prefix.archive_seq_trg BEFORE INSERT ON &mw_prefix.archive
 	FOR EACH ROW WHEN (new.ar_id IS NULL)
@@ -287,12 +285,12 @@ CREATE TABLE &mw_prefix.slots (
   slot_revision_id NUMBER NOT NULL,
   slot_role_id NUMBER NOT NULL,
   slot_content_id NUMBER NOT NULL,
-  slot_inherited CHAR(1) DEFAULT '0' NOT NULL
+  slot_origin NUMBER NOT NULL
 );
 
 ALTER TABLE &mw_prefix.slots ADD CONSTRAINT &mw_prefix.slots_pk PRIMARY KEY (slot_revision_id, slot_role_id);
 
-CREATE INDEX &mw_prefix.slot_role_inherited ON &mw_prefix.slots (slot_revision_id, slot_role_id, slot_inherited);
+CREATE INDEX &mw_prefix.slot_revision_origin_role ON &mw_prefix.slots (slot_revision_id, slot_origin, slot_role_id);
 
 
 CREATE SEQUENCE content_content_id_seq;
@@ -438,6 +436,32 @@ BEGIN
 END;
 /*$mw$*/
 
+-- Table defining tag names for IDs. Also stores hit counts to avoid expensive queries on change_tag
+CREATE SEQUENCE change_tag_def_ctd_id_seq;
+CREATE TABLE &mw_prefix.change_tag_def (
+    -- Numerical ID of the tag (ct_tag_id refers to this)
+    ctd_id NUMBER  NOT NULL,
+    -- Symbolic name of the tag (what would previously be put in ct_tag)
+    ctd_name VARCHAR2(255) NOT NULL,
+    -- Whether this tag was defined manually by a privileged user using Special:Tags
+    ctd_user_defined CHAR(1) DEFAULT '0' NOT NULL,
+    -- Number of times this tag was used
+    ctd_count NUMBER NOT NULL DEFAULT 0
+);
+
+ALTER TABLE &mw_prefix.change_tag_def ADD CONSTRAINT &mw_prefix.change_tag_def_pk PRIMARY KEY (ctd_id);
+CREATE UNIQUE INDEX &mw_prefix.ctd_name ON &mw_prefix.change_tag_def (ctd_name);
+CREATE INDEX &mw_prefix.ctd_count ON &mw_prefix.change_tag_def (ctd_count);
+CREATE INDEX &mw_prefix.ctd_user_defined ON &mw_prefix.change_tag_def (ctd_user_defined);
+
+/*$mw$*/
+CREATE TRIGGER &mw_prefix.change_tag_def_seq_trg BEFORE INSERT ON &mw_prefix.change_tag_def
+    FOR EACH ROW WHEN (new.ctd_id IS NULL)
+BEGIN
+    &mw_prefix.lastval_pkg.setLastval(change_tag_def_ctd_id_seq.nextval, :new.ctd_id);
+END;
+/*$mw$*/
+
 CREATE TABLE &mw_prefix.langlinks (
   ll_from    NUMBER  NOT NULL,
   ll_lang    VARCHAR2(20),
@@ -457,12 +481,12 @@ CREATE UNIQUE INDEX &mw_prefix.iwlinks_ui02 ON &mw_prefix.iwlinks (iwl_prefix, i
 
 CREATE TABLE &mw_prefix.site_stats (
   ss_row_id         NUMBER  NOT NULL PRIMARY KEY,
-  ss_total_edits    NUMBER            DEFAULT 0,
-  ss_good_articles  NUMBER            DEFAULT 0,
-  ss_total_pages    NUMBER            DEFAULT -1,
-  ss_users          NUMBER            DEFAULT -1,
-  ss_active_users   NUMBER            DEFAULT -1,
-  ss_images         NUMBER            DEFAULT 0
+  ss_total_edits    NUMBER            DEFAULT NULL,
+  ss_good_articles  NUMBER            DEFAULT NULL,
+  ss_total_pages    NUMBER            DEFAULT NULL,
+  ss_users          NUMBER            DEFAULT NULL,
+  ss_active_users   NUMBER            DEFAULT NULL,
+  ss_images         NUMBER            DEFAULT NULL
 );
 
 CREATE SEQUENCE ipblocks_ipb_id_seq;
@@ -472,7 +496,7 @@ CREATE TABLE &mw_prefix.ipblocks (
   ipb_user              NUMBER      DEFAULT 0 NOT  NULL,
   ipb_by                NUMBER      DEFAULT 0 NOT NULL,
   ipb_by_text           VARCHAR2(255)      NULL,
-  ipb_by_actor          NUMBER      DEFUALT 0 NOT NULL,
+  ipb_by_actor          NUMBER      DEFAULT 0 NOT NULL,
   ipb_reason            VARCHAR2(255)      NULL,
   ipb_reason_id         NUMBER DEFAULT 0 NOT NULL,
   ipb_timestamp         TIMESTAMP(6) WITH TIME ZONE  NOT NULL,
@@ -486,7 +510,8 @@ CREATE TABLE &mw_prefix.ipblocks (
   ipb_deleted           CHAR(1)      DEFAULT '0' NOT NULL,
   ipb_block_email       CHAR(1)      DEFAULT '0' NOT NULL,
   ipb_allow_usertalk    CHAR(1)      DEFAULT '0' NOT NULL,
-  ipb_parent_block_id             NUMBER       DEFAULT NULL
+  ipb_parent_block_id   NUMBER       DEFAULT NULL,
+  ipb_sitewide          CHAR(1)      DEFAULT '1' NOT NULL
 );
 ALTER TABLE &mw_prefix.ipblocks ADD CONSTRAINT &mw_prefix.ipblocks_pk PRIMARY KEY (ipb_id);
 ALTER TABLE &mw_prefix.ipblocks ADD CONSTRAINT &mw_prefix.ipblocks_fk1 FOREIGN KEY (ipb_user) REFERENCES &mw_prefix.mwuser(user_id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED;
@@ -506,6 +531,14 @@ BEGIN
 END;
 /*$mw$*/
 
+CREATE TABLE &mw_prefix.ipblocks_restrictions (
+  ir_ipb_id NUMBER NOT NULL,
+  ir_type NUMBER NOT NULL,
+  ir_value NUMBER NOT NULL
+);
+ALTER TABLE &mw_prefix.ipblocks_restrictions ADD CONSTRAINT ipblocks_restrictions_pk PRIMARY KEY (ir_ipb_id, ir_type, ir_value);
+CREATE INDEX &mw_prefix.ir_type_value ON &mw_prefix.ipblocks_restrictions (ir_type, ir_value);
+
 CREATE TABLE &mw_prefix.image (
   img_name         VARCHAR2(255)      NOT NULL,
   img_size         NUMBER   DEFAULT 0 NOT NULL,
@@ -517,6 +550,7 @@ CREATE TABLE &mw_prefix.image (
   img_major_mime   VARCHAR2(32) DEFAULT 'unknown',
   img_minor_mime   VARCHAR2(100) DEFAULT 'unknown',
   img_description  VARCHAR2(255),
+  img_description_id  NUMBER DEFAULT 0 NOT NULL,
   img_user         NUMBER       DEFAULT 0 NOT NULL,
   img_user_text    VARCHAR2(255)      NULL,
   img_actor        NUMBER       DEFAULT 0 NOT NULL,
@@ -525,6 +559,7 @@ CREATE TABLE &mw_prefix.image (
 );
 ALTER TABLE &mw_prefix.image ADD CONSTRAINT &mw_prefix.image_pk PRIMARY KEY (img_name);
 ALTER TABLE &mw_prefix.image ADD CONSTRAINT &mw_prefix.image_fk1 FOREIGN KEY (img_user) REFERENCES &mw_prefix.mwuser(user_id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE &mw_prefix.image ADD CONSTRAINT &mw_prefix.image_fk2 FOREIGN KEY (img_description_id) REFERENCES &mw_prefix."COMMENT"(comment_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
 CREATE INDEX &mw_prefix.image_i01 ON &mw_prefix.image (img_user_text,img_timestamp);
 CREATE INDEX &mw_prefix.image_i02 ON &mw_prefix.image (img_size);
 CREATE INDEX &mw_prefix.image_i03 ON &mw_prefix.image (img_timestamp);
@@ -686,7 +721,7 @@ ALTER TABLE &mw_prefix.recentchanges ADD CONSTRAINT &mw_prefix.recentchanges_fk1
 ALTER TABLE &mw_prefix.recentchanges ADD CONSTRAINT &mw_prefix.recentchanges_fk2 FOREIGN KEY (rc_cur_id) REFERENCES &mw_prefix.page(page_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
 ALTER TABLE &mw_prefix.recentchanges ADD CONSTRAINT &mw_prefix.recentchanges_fk3 FOREIGN KEY (rc_comment_id) REFERENCES &mw_prefix."COMMENT"(comment_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
 CREATE INDEX &mw_prefix.recentchanges_i01 ON &mw_prefix.recentchanges (rc_timestamp);
-CREATE INDEX &mw_prefix.recentchanges_i02 ON &mw_prefix.recentchanges (rc_namespace, rc_title);
+CREATE INDEX &mw_prefix.recentchanges_i09 ON &mw_prefix.recentchanges (rc_namespace, rc_title, rc_timestamp);
 CREATE INDEX &mw_prefix.recentchanges_i03 ON &mw_prefix.recentchanges (rc_cur_id);
 CREATE INDEX &mw_prefix.recentchanges_i04 ON &mw_prefix.recentchanges (rc_new,rc_namespace,rc_timestamp);
 CREATE INDEX &mw_prefix.recentchanges_i05 ON &mw_prefix.recentchanges (rc_ip);
@@ -695,6 +730,7 @@ CREATE INDEX &mw_prefix.recentchanges_i07 ON &mw_prefix.recentchanges (rc_user_t
 CREATE INDEX &mw_prefix.rc_ns_actor ON &mw_prefix.recentchanges (rc_namespace, rc_actor);
 CREATE INDEX &mw_prefix.rc_actor ON &mw_prefix.recentchanges (rc_actor, rc_timestamp);
 CREATE INDEX &mw_prefix.recentchanges_i08 ON &mw_prefix.recentchanges (rc_namespace, rc_type, rc_patrolled, rc_timestamp);
+CREATE INDEX &mw_prefix.recentchanges_i10 ON &mw_prefix.recentchanges (rc_this_oldid);
 /*$mw$*/
 CREATE TRIGGER &mw_prefix.recentchanges_seq_trg BEFORE INSERT ON &mw_prefix.recentchanges
 	FOR EACH ROW WHEN (new.rc_id IS NULL)
@@ -747,13 +783,6 @@ CREATE TABLE &mw_prefix.objectcache (
   exptime  TIMESTAMP(6) WITH TIME ZONE  NOT NULL
 );
 CREATE INDEX &mw_prefix.objectcache_i01 ON &mw_prefix.objectcache (exptime);
-
-CREATE TABLE &mw_prefix.transcache (
-  tc_url       VARCHAR2(255)         NOT NULL,
-  tc_contents  CLOB         NOT NULL,
-  tc_time      TIMESTAMP(6) WITH TIME ZONE  NOT NULL
-);
-CREATE UNIQUE INDEX &mw_prefix.transcache_u01 ON &mw_prefix.transcache (tc_url);
 
 
 CREATE SEQUENCE logging_log_id_seq;
@@ -915,14 +944,22 @@ CREATE TABLE &mw_prefix.change_tag (
   ct_rc_id NUMBER NULL,
   ct_log_id NUMBER NULL,
   ct_rev_id NUMBER NULL,
-  ct_tag VARCHAR2(255) NOT NULL,
-  ct_params BLOB NULL
+  ct_tag VARCHAR2(255) DEFAULT '///invalid///' NOT NULL,
+  ct_params BLOB NULL,
+  ct_tag_id NUMBER NULL
 );
 ALTER TABLE &mw_prefix.change_tag ADD CONSTRAINT &mw_prefix.change_tag_pk PRIMARY KEY (ct_id);
-CREATE UNIQUE INDEX &mw_prefix.change_tag_u01 ON &mw_prefix.change_tag (ct_rc_id,ct_tag);
-CREATE UNIQUE INDEX &mw_prefix.change_tag_u02 ON &mw_prefix.change_tag (ct_log_id,ct_tag);
-CREATE UNIQUE INDEX &mw_prefix.change_tag_u03 ON &mw_prefix.change_tag (ct_rev_id,ct_tag);
+
+CREATE INDEX &mw_prefix.change_tag_i03 ON &mw_prefix.change_tag (ct_rc_id,ct_tag);
+CREATE INDEX &mw_prefix.change_tag_i04 ON &mw_prefix.change_tag (ct_log_id,ct_tag);
+CREATE INDEX &mw_prefix.change_tag_i05 ON &mw_prefix.change_tag (ct_rev_id,ct_tag);
+
+CREATE UNIQUE INDEX &mw_prefix.change_tag_u04 ON &mw_prefix.change_tag (ct_rc_id,ct_tag_id);
+CREATE UNIQUE INDEX &mw_prefix.change_tag_u05 ON &mw_prefix.change_tag (ct_log_id,ct_tag_id);
+CREATE UNIQUE INDEX &mw_prefix.change_tag_u06 ON &mw_prefix.change_tag (ct_rev_id,ct_tag_id);
+
 CREATE INDEX &mw_prefix.change_tag_i01 ON &mw_prefix.change_tag (ct_tag,ct_rc_id,ct_rev_id,ct_log_id);
+CREATE INDEX &mw_prefix.change_tag_i02 ON &mw_prefix.change_tag (ct_tag_id,ct_rc_id,ct_rev_id,ct_log_id);
 
 CREATE TABLE &mw_prefix.tag_summary (
   ts_id NUMBER NOT NULL,

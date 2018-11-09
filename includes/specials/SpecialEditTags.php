@@ -76,7 +76,7 @@ class SpecialEditTags extends UnlistedSpecialPage {
 		$this->outputHeader();
 
 		$this->getOutput()->addModules( [ 'mediawiki.special.edittags',
-			'mediawiki.special.edittags.styles' ] );
+			'mediawiki.special' ] );
 
 		$this->submitClicked = $request->wasPosted() && $request->getBool( 'wpSubmit' );
 
@@ -166,7 +166,7 @@ class SpecialEditTags extends UnlistedSpecialPage {
 				[],
 				[
 					'page' => $this->targetObj->getPrefixedText(),
-					'hide_tag_log' => '0',
+					'wpfilters' => [ 'tag' ],
 				]
 			);
 			if ( !$this->targetObj->isSpecialPage() ) {
@@ -454,8 +454,8 @@ class SpecialEditTags extends UnlistedSpecialPage {
 	 */
 	protected function failure( $status ) {
 		$this->getOutput()->setPageTitle( $this->msg( 'actionfailed' ) );
-		$this->getOutput()->addWikiText(
-			Html::errorBox( $status->getWikiText( 'tags-edit-failure' ) )
+		$this->getOutput()->wrapWikiTextAsInterface(
+			'errorbox', $status->getWikiText( 'tags-edit-failure' )
 		);
 		$this->showForm();
 	}

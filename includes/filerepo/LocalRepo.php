@@ -22,7 +22,8 @@
  * @ingroup FileRepo
  */
 
-use Wikimedia\Rdbms\ResultWrapper;
+use MediaWiki\MediaWikiServices;
+use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
 
@@ -91,7 +92,7 @@ class LocalRepo extends FileRepo {
 	 * interleave database locks with file operations, which is potentially a
 	 * remote operation.
 	 *
-	 * @param array $storageKeys
+	 * @param string[] $storageKeys
 	 *
 	 * @return Status
 	 */
@@ -200,7 +201,7 @@ class LocalRepo extends FileRepo {
 		}
 
 		$method = __METHOD__;
-		$redirDbKey = ObjectCache::getMainWANInstance()->getWithSetCallback(
+		$redirDbKey = $this->wanCache->getWithSetCallback(
 			$memcKey,
 			$expiry,
 			function ( $oldValue, &$ttl, array &$setOpts ) use ( $method, $title ) {
@@ -274,10 +275,10 @@ class LocalRepo extends FileRepo {
 			);
 		};
 
-		$applyMatchingFiles = function ( ResultWrapper $res, &$searchSet, &$finalFiles )
+		$applyMatchingFiles = function ( IResultWrapper $res, &$searchSet, &$finalFiles )
 			use ( $fileMatchesSearch, $flags )
 		{
-			global $wgContLang;
+			$contLang = MediaWikiServices::getInstance()->getContentLanguage();
 			$info = $this->getInfo();
 			foreach ( $res as $row ) {
 				$file = $this->newFileFromRow( $row );
@@ -286,7 +287,7 @@ class LocalRepo extends FileRepo {
 				$dbKeysLook = [ strtr( $file->getName(), ' ', '_' ) ];
 				if ( !empty( $info['initialCapital'] ) ) {
 					// Search keys for "hi.png" and "Hi.png" should use the "Hi.png file"
-					$dbKeysLook[] = $wgContLang->lcfirst( $file->getName() );
+					$dbKeysLook[] = $contLang->lcfirst( $file->getName() );
 				}
 				foreach ( $dbKeysLook as $dbKey ) {
 					if ( isset( $searchSet[$dbKey] )
@@ -371,7 +372,7 @@ class LocalRepo extends FileRepo {
 	 * SHA-1 content hash.
 	 *
 	 * @param string $hash A sha1 hash to look for
-	 * @return File[]
+	 * @return LocalFile[]
 	 */
 	function findBySha1( $hash ) {
 		$dbr = $this->getReplicaDB();
@@ -400,8 +401,8 @@ class LocalRepo extends FileRepo {
 	 *
 	 * Overrides generic implementation in FileRepo for performance reason
 	 *
-	 * @param array $hashes An array of hashes
-	 * @return array An Array of arrays or iterators of file objects and the hash as key
+	 * @param string[] $hashes An array of hashes
+	 * @return array[] An Array of arrays or iterators of file objects and the hash as key
 	 */
 	function findBySha1s( array $hashes ) {
 		if ( !count( $hashes ) ) {
@@ -434,7 +435,7 @@ class LocalRepo extends FileRepo {
 	 *
 	 * @param string $prefix The prefix to search for
 	 * @param int $limit The maximum amount of files to return
-	 * @return array
+	 * @return LocalFile[]
 	 */
 	public function findFilesByPrefix( $prefix, $limit ) {
 		$selectOptions = [ 'ORDER BY' => 'img_name', 'LIMIT' => intval( $limit ) ];
@@ -499,14 +500,14 @@ class LocalRepo extends FileRepo {
 	/**
 	 * Get a key on the primary cache for this repository.
 	 * Returns false if the repository's cache is not accessible at this site.
-	 * The parameters are the parts of the key, as for wfMemcKey().
+	 * The parameters are the parts of the key.
 	 *
 	 * @return string
 	 */
 	function getSharedCacheKey( /*...*/ ) {
 		$args = func_get_args();
 
-		return call_user_func_array( 'wfMemcKey', $args );
+		return $this->wanCache->makeKey( ...$args );
 	}
 
 	/**
@@ -520,7 +521,7 @@ class LocalRepo extends FileRepo {
 		if ( $key ) {
 			$this->getMasterDB()->onTransactionPreCommitOrIdle(
 				function () use ( $key ) {
-					ObjectCache::getMainWANInstance()->delete( $key );
+					$this->wanCache->delete( $key );
 				},
 				__METHOD__
 			);
@@ -589,7 +590,7 @@ class LocalRepo extends FileRepo {
 			wfDebug( __METHOD__ . ": skipped because storage uses sha1 paths\n" );
 			return Status::newGood();
 		} else {
-			return call_user_func_array( 'parent::' . $function, $args );
+			return parent::$function( ...$args );
 		}
 	}
 }

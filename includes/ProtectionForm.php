@@ -196,7 +196,7 @@ class ProtectionForm {
 	/**
 	 * Show the input form with optional error message
 	 *
-	 * @param string $err Error message or null if there's no error
+	 * @param string|null $err Error message or null if there's no error
 	 */
 	function show( $err = null ) {
 		$out = $this->mContext->getOutput();
@@ -204,9 +204,9 @@ class ProtectionForm {
 		$out->addBacklinkSubtitle( $this->mTitle );
 
 		if ( is_array( $err ) ) {
-			$out->wrapWikiMsg( "<p class='error'>\n$1\n</p>\n", $err );
+			$out->wrapWikiMsg( "<div class='error'>\n$1\n</div>\n", $err );
 		} elseif ( is_string( $err ) ) {
-			$out->addHTML( "<p class='error'>{$err}</p>\n" );
+			$out->addHTML( "<div class='error'>{$err}</div>\n" );
 		}
 
 		if ( $this->mTitle->getRestrictionTypes() === [] ) {
@@ -216,7 +216,9 @@ class ProtectionForm {
 				'protect-norestrictiontypes-title',
 				$this->mTitle->getPrefixedText()
 			) );
-			$out->addWikiText( $this->mContext->msg( 'protect-norestrictiontypes-text' )->plain() );
+			$out->addWikiTextAsInterface(
+				$this->mContext->msg( 'protect-norestrictiontypes-text' )->plain()
+			);
 
 			// Show the log in case protection was possible once
 			$this->showLogExtract( $out );
@@ -246,7 +248,9 @@ class ProtectionForm {
 				$this->mContext->msg( 'protect-title-notallowed',
 					$this->mTitle->getPrefixedText() )
 			);
-			$out->addWikiText( $out->formatPermissionsErrorMessage( $this->mPermErrors, 'protect' ) );
+			$out->addWikiTextAsInterface( $out->formatPermissionsErrorMessage(
+				$this->mPermErrors, 'protect'
+			) );
 		} else {
 			$out->setPageTitle( $this->mContext->msg( 'protect-title', $this->mTitle->getPrefixedText() ) );
 			$out->addWikiMsg( 'protect-text',
@@ -313,7 +317,7 @@ class ProtectionForm {
 		);
 
 		if ( !$status->isOK() ) {
-			$this->show( $out->parseInline( $status->getWikiText() ) );
+			$this->show( $out->parseInlineAsInterface( $status->getWikiText() ) );
 			return false;
 		}
 

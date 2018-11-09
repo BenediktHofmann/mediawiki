@@ -21,6 +21,8 @@
  * @ingroup FileAbstraction
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Class representing a row of the 'filearchive' table
  *
@@ -214,18 +216,19 @@ class ArchivedFile {
 	/**
 	 * Fields in the filearchive table
 	 * @deprecated since 1.31, use self::getQueryInfo() instead.
-	 * @return array
+	 * @return string[]
 	 */
 	static function selectFields() {
 		global $wgActorTableSchemaMigrationStage;
 
-		if ( $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH ) {
+		if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_NEW ) {
 			// If code is using this instead of self::getQueryInfo(), there's a
 			// decent chance it's going to try to directly access
 			// $row->fa_user or $row->fa_user_text and we can't give it
-			// useful values here once those aren't being written anymore.
+			// useful values here once those aren't being used anymore.
 			throw new BadMethodCallException(
-				'Cannot use ' . __METHOD__ . ' when $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH'
+				'Cannot use ' . __METHOD__
+					. ' when $wgActorTableSchemaMigrationStage has SCHEMA_COMPAT_READ_NEW'
 			);
 		}
 
@@ -246,25 +249,25 @@ class ArchivedFile {
 			'fa_minor_mime',
 			'fa_user',
 			'fa_user_text',
-			'fa_actor' => $wgActorTableSchemaMigrationStage > MIGRATION_OLD ? 'fa_actor' : null,
+			'fa_actor' => 'NULL',
 			'fa_timestamp',
 			'fa_deleted',
 			'fa_deleted_timestamp', /* Used by LocalFileRestoreBatch */
 			'fa_sha1',
-		] + CommentStore::getStore()->getFields( 'fa_description' );
+		] + MediaWikiServices::getInstance()->getCommentStore()->getFields( 'fa_description' );
 	}
 
 	/**
 	 * Return the tables, fields, and join conditions to be selected to create
 	 * a new archivedfile object.
 	 * @since 1.31
-	 * @return array With three keys:
+	 * @return array[] With three keys:
 	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()`
 	 *   - fields: (string[]) to include in the `$vars` to `IDatabase->select()`
 	 *   - joins: (array) to include in the `$join_conds` to `IDatabase->select()`
 	 */
 	public static function getQueryInfo() {
-		$commentQuery = CommentStore::getStore()->getJoin( 'fa_description' );
+		$commentQuery = MediaWikiServices::getInstance()->getCommentStore()->getJoin( 'fa_description' );
 		$actorQuery = ActorMigration::newMigration()->getJoin( 'fa_user' );
 		return [
 			'tables' => [ 'filearchive' ] + $commentQuery['tables'] + $actorQuery['tables'],
@@ -310,7 +313,7 @@ class ArchivedFile {
 		$this->metadata = $row->fa_metadata;
 		$this->mime = "$row->fa_major_mime/$row->fa_minor_mime";
 		$this->media_type = $row->fa_media_type;
-		$this->description = CommentStore::getStore()
+		$this->description = MediaWikiServices::getInstance()->getCommentStore()
 			// Legacy because $row may have come from self::selectFields()
 			->getCommentLegacy( wfGetDB( DB_REPLICA ), 'fa_description', $row )->text;
 		$this->user = User::newFromAnyId( $row->fa_user, $row->fa_user_text, $row->fa_actor );

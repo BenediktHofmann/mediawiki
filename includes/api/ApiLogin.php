@@ -130,13 +130,18 @@ class ApiLogin extends ApiBase {
 				$session = $status->getValue();
 				$authRes = 'Success';
 				$loginType = 'BotPassword';
-			} elseif ( !$botLoginData[2] || $status->hasMessage( 'login-throttled' ) ) {
+			} elseif (
+				$status->hasMessage( 'login-throttled' ) ||
+				$status->hasMessage( 'botpasswords-needs-reset' ) ||
+				$status->hasMessage( 'botpasswords-locked' )
+			) {
 				$authRes = 'Failed';
 				$message = $status->getMessage();
 				LoggerFactory::getInstance( 'authentication' )->info(
 					'BotPassword login failed: ' . $status->getWikiText( false, false, 'en' )
 				);
 			}
+			// For other errors, let's see if it's a valid non-bot login
 		}
 
 		if ( $authRes === false ) {
@@ -216,15 +221,15 @@ class ApiLogin extends ApiBase {
 				);
 				break;
 
+			// @codeCoverageIgnoreStart
+			// Unreachable
 			default:
 				ApiBase::dieDebug( __METHOD__, "Unhandled case value: {$authRes}" );
+			// @codeCoverageIgnoreEnd
 		}
 
 		$this->getResult()->addValue( null, 'login', $result );
 
-		if ( $loginType === 'LoginForm' && isset( LoginForm::$statusCodes[$authRes] ) ) {
-			$authRes = LoginForm::$statusCodes[$authRes];
-		}
 		LoggerFactory::getInstance( 'authevents' )->info( 'Login attempt', [
 			'event' => 'login',
 			'successful' => $authRes === 'Success',

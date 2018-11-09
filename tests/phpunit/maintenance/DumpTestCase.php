@@ -8,6 +8,7 @@ use MediaWikiLangTestCase;
 use Page;
 use User;
 use XMLReader;
+use MWException;
 
 /**
  * Base TestCase for dumps
@@ -23,7 +24,7 @@ abstract class DumpTestCase extends MediaWikiLangTestCase {
 	 * exception and store it until we are in setUp and may finally rethrow
 	 * the exception without crashing the test suite.
 	 *
-	 * @var Exception|null
+	 * @var \Exception|null
 	 */
 	protected $exceptionFromAddDBData = null;
 

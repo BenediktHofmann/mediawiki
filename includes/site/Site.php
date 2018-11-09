@@ -23,7 +23,7 @@
  * @file
  * @ingroup Site
  *
- * @license GNU GPL v2+
+ * @license GPL-2.0-or-later
  * @author Jeroen De Dauw < jeroendedauw@gmail.com >
  */
 class Site implements Serializable {
@@ -382,8 +382,10 @@ class Site implements Serializable {
 	}
 
 	/**
-	 * Returns $pageName without changes.
-	 * Subclasses may override this to apply some kind of normalization.
+	 * Attempt to normalize the page name in some fashion.
+	 * May return false to indicate various kinds of failure.
+	 *
+	 * This implementation returns $pageName without changes.
 	 *
 	 * @see Site::normalizePageName
 	 *
@@ -391,7 +393,7 @@ class Site implements Serializable {
 	 *
 	 * @param string $pageName
 	 *
-	 * @return string
+	 * @return string|false
 	 */
 	public function normalizePageName( $pageName ) {
 		return $pageName;

@@ -81,13 +81,15 @@ class ApiFormatJson extends ApiFormatBase {
 
 				default:
 					// Should have been caught during parameter validation
+					// @codeCoverageIgnoreStart
 					$this->dieDebug( __METHOD__, 'Unknown value for \'formatversion\'' );
+					// @codeCoverageIgnoreEnd
 			}
 		}
 		$data = $this->getResult()->getResultData( null, $transform );
 		$json = FormatJson::encode( $data, $this->getIsHtml(), $opt );
 
-		// T68776: wfMangleFlashPolicy() is needed to avoid a nasty bug in
+		// T68776: OutputHandler::mangleFlashPolicy() avoids a nasty bug in
 		// Flash, but what it does isn't friendly for the API, so we need to
 		// work around it.
 		if ( preg_match( '/\<\s*cross-domain-policy(?=\s|\>)/i', $json ) ) {
@@ -124,8 +126,8 @@ class ApiFormatJson extends ApiFormatBase {
 				ApiBase::PARAM_HELP_MSG => 'apihelp-json-param-ascii',
 			],
 			'formatversion' => [
-				ApiBase::PARAM_TYPE => [ 1, 2, 'latest' ],
-				ApiBase::PARAM_DFLT => 1,
+				ApiBase::PARAM_TYPE => [ '1', '2', 'latest' ],
+				ApiBase::PARAM_DFLT => '1',
 				ApiBase::PARAM_HELP_MSG => 'apihelp-json-param-formatversion',
 			],
 		];

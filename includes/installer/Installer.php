@@ -23,7 +23,10 @@
  * @file
  * @ingroup Deployment
  */
+
+use MediaWiki\Interwiki\NullInterwikiLookup;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Shell\Shell;
 
 /**
  * This documentation group collects source code files with deployment functionality.
@@ -403,7 +406,7 @@ abstract class Installer {
 		$installerConfig = self::getInstallerConfig( $defaultConfig );
 
 		// Reset all services and inject config overrides
-		MediaWiki\MediaWikiServices::resetGlobalInstance( $installerConfig );
+		MediaWikiServices::resetGlobalInstance( $installerConfig );
 
 		// Don't attempt to load user language options (T126177)
 		// This will be overridden in the web installer with the user-specified language
@@ -414,12 +417,18 @@ abstract class Installer {
 		Language::getLocalisationCache()->disableBackend();
 
 		// Disable all global services, since we don't have any configuration yet!
-		MediaWiki\MediaWikiServices::disableStorageBackend();
+		MediaWikiServices::disableStorageBackend();
 
+		$mwServices = MediaWikiServices::getInstance();
 		// Disable object cache (otherwise CACHE_ANYTHING will try CACHE_DB and
 		// SqlBagOStuff will then throw since we just disabled wfGetDB)
-		$wgObjectCaches = MediaWikiServices::getInstance()->getMainConfig()->get( 'ObjectCaches' );
+		$wgObjectCaches = $mwServices->getMainConfig()->get( 'ObjectCaches' );
 		$wgMemc = ObjectCache::getInstance( CACHE_NONE );
+
+		// Disable interwiki lookup, to avoid database access during parses
+		$mwServices->redefineService( 'InterwikiLookup', function () {
+			return new NullInterwikiLookup();
+		} );
 
 		// Having a user with id = 0 safeguards us from DB access via User::loadOptions().
 		$wgUser = User::newFromId( 0 );
@@ -445,6 +454,7 @@ abstract class Installer {
 
 		$this->parserTitle = Title::newFromText( 'Installer' );
 		$this->parserOptions = new ParserOptions( $wgUser ); // language will be wrong :(
+		$this->parserOptions->setTidy( true );
 		// Don't try to access DB before user language is initialised
 		$this->setParserLanguage( Language::factory( 'en' ) );
 	}
@@ -522,16 +532,12 @@ abstract class Installer {
 	 * Installer variables are typically prefixed by an underscore.
 	 *
 	 * @param string $name
-	 * @param mixed $default
+	 * @param mixed|null $default
 	 *
 	 * @return mixed
 	 */
 	public function getVar( $name, $default = null ) {
-		if ( !isset( $this->settings[$name] ) ) {
-			return $default;
-		} else {
-			return $this->settings[$name];
-		}
+		return $this->settings[$name] ?? $default;
 	}
 
 	/**
@@ -810,7 +816,7 @@ abstract class Installer {
 		// with utf8 support, but not unicode property support.
 		// check that \p{Zs} (space separators) matches
 		// U+3000 (Ideographic space)
-		$regexprop = preg_replace( '/\p{Zs}/u', '', "-\xE3\x80\x80-" );
+		$regexprop = preg_replace( '/\p{Zs}/u', '', "-\u{3000}-" );
 		Wikimedia\restoreWarnings();
 		if ( $regexd != '--' || $regexprop != '--' ) {
 			$this->showError( 'config-pcre-no-utf8' );
@@ -989,18 +995,22 @@ abstract class Installer {
 			return true;
 		}
 
-		# Get a list of available locales.
-		$ret = false;
-		$lines = wfShellExec( '/usr/bin/locale -a', $ret );
-
-		if ( $ret ) {
+		if ( Shell::isDisabled() ) {
 			return true;
 		}
 
+		# Get a list of available locales.
+		$result = Shell::command( '/usr/bin/locale', '-a' )
+			->execute();
+
+		if ( $result->getExitCode() != 0 ) {
+			return true;
+		}
+
+		$lines = $result->getStdout();
 		$lines = array_map( 'trim', explode( "\n", $lines ) );
 		$candidatesByLocale = [];
 		$candidatesByLang = [];
-
 		foreach ( $lines as $line ) {
 			if ( $line === '' ) {
 				continue;
@@ -1103,41 +1113,18 @@ abstract class Installer {
 	}
 
 	/**
-	 * Convert a hex string representing a Unicode code point to that code point.
-	 * @param string $c
-	 * @return string|false
-	 */
-	protected function unicodeChar( $c ) {
-		$c = hexdec( $c );
-		if ( $c <= 0x7F ) {
-			return chr( $c );
-		} elseif ( $c <= 0x7FF ) {
-			return chr( 0xC0 | $c >> 6 ) . chr( 0x80 | $c & 0x3F );
-		} elseif ( $c <= 0xFFFF ) {
-			return chr( 0xE0 | $c >> 12 ) . chr( 0x80 | $c >> 6 & 0x3F ) .
-				chr( 0x80 | $c & 0x3F );
-		} elseif ( $c <= 0x10FFFF ) {
-			return chr( 0xF0 | $c >> 18 ) . chr( 0x80 | $c >> 12 & 0x3F ) .
-				chr( 0x80 | $c >> 6 & 0x3F ) .
-				chr( 0x80 | $c & 0x3F );
-		} else {
-			return false;
-		}
-	}
-
-	/**
 	 * Check the libicu version
 	 */
 	protected function envCheckLibicu() {
 		/**
 		 * This needs to be updated something that the latest libicu
 		 * will properly normalize.  This normalization was found at
-		 * http://www.unicode.org/versions/Unicode5.2.0/#Character_Additions
+		 * https://www.unicode.org/versions/Unicode5.2.0/#Character_Additions
 		 * Note that we use the hex representation to create the code
 		 * points in order to avoid any Unicode-destroying during transit.
 		 */
-		$not_normal_c = $this->unicodeChar( "FA6C" );
-		$normal_c = $this->unicodeChar( "242EE" );
+		$not_normal_c = "\u{FA6C}";
+		$normal_c = "\u{242EE}";
 
 		$useNormalizer = 'php';
 		$needsUpdate = false;
@@ -1198,7 +1185,7 @@ abstract class Installer {
 		$scriptTypes = [
 			'php' => [
 				"<?php echo 'ex' . 'ec';",
-				"#!/var/env php5\n<?php echo 'ex' . 'ec';",
+				"#!/var/env php\n<?php echo 'ex' . 'ec';",
 			],
 		];
 
@@ -1273,15 +1260,33 @@ abstract class Installer {
 	}
 
 	/**
-	 * Finds extensions that follow the format /$directory/Name/Name.php,
-	 * and returns an array containing the value for 'Name' for each found extension.
+	 * Find extensions or skins in a subdirectory of $IP.
+	 * Returns an array containing the value for 'Name' for each found extension.
 	 *
-	 * Reasonable values for $directory include 'extensions' (the default) and 'skins'.
-	 *
-	 * @param string $directory Directory to search in
+	 * @param string $directory Directory to search in, relative to $IP, must be either "extensions"
+	 *     or "skins"
 	 * @return array [ $extName => [ 'screenshots' => [ '...' ] ]
 	 */
 	public function findExtensions( $directory = 'extensions' ) {
+		switch ( $directory ) {
+			case 'extensions':
+				return $this->findExtensionsByType( 'extension', 'extensions' );
+			case 'skins':
+				return $this->findExtensionsByType( 'skin', 'skins' );
+			default:
+				throw new InvalidArgumentException( "Invalid extension type" );
+		}
+	}
+
+	/**
+	 * Find extensions or skins, and return an array containing the value for 'Name' for each found
+	 * extension.
+	 *
+	 * @param string $type Either "extension" or "skin"
+	 * @param string $directory Directory to search in, relative to $IP
+	 * @return array [ $extName => [ 'screenshots' => [ '...' ] ]
+	 */
+	protected function findExtensionsByType( $type = 'extension', $directory = 'extensions' ) {
 		if ( $this->getVar( 'IP' ) === null ) {
 			return [];
 		}
@@ -1291,31 +1296,152 @@ abstract class Installer {
 			return [];
 		}
 
-		// extensions -> extension.json, skins -> skin.json
-		$jsonFile = substr( $directory, 0, strlen( $directory ) - 1 ) . '.json';
-
 		$dh = opendir( $extDir );
 		$exts = [];
 		while ( ( $file = readdir( $dh ) ) !== false ) {
 			if ( !is_dir( "$extDir/$file" ) ) {
 				continue;
 			}
-			if ( file_exists( "$extDir/$file/$jsonFile" ) || file_exists( "$extDir/$file/$file.php" ) ) {
-				// Extension exists. Now see if there are screenshots
-				$exts[$file] = [];
-				if ( is_dir( "$extDir/$file/screenshots" ) ) {
-					$paths = glob( "$extDir/$file/screenshots/*.png" );
-					foreach ( $paths as $path ) {
-						$exts[$file]['screenshots'][] = str_replace( $extDir, "../$directory", $path );
-					}
-
-				}
+			$status = $this->getExtensionInfo( $type, $directory, $file );
+			if ( $status->isOK() ) {
+				$exts[$file] = $status->value;
 			}
 		}
 		closedir( $dh );
 		uksort( $exts, 'strnatcasecmp' );
 
 		return $exts;
+	}
+
+	/**
+	 * @param string $type Either "extension" or "skin"
+	 * @param string $parentRelPath The parent directory relative to $IP
+	 * @param string $name The extension or skin name
+	 * @return Status An object containing an error list. If there were no errors, an associative
+	 *     array of information about the extension can be found in $status->value.
+	 */
+	protected function getExtensionInfo( $type, $parentRelPath, $name ) {
+		if ( $this->getVar( 'IP' ) === null ) {
+			throw new Exception( 'Cannot find extensions since the IP variable is not yet set' );
+		}
+		if ( $type !== 'extension' && $type !== 'skin' ) {
+			throw new InvalidArgumentException( "Invalid extension type" );
+		}
+		$absDir = $this->getVar( 'IP' ) . "/$parentRelPath/$name";
+		$relDir = "../$parentRelPath/$name";
+		if ( !is_dir( $absDir ) ) {
+			return Status::newFatal( 'config-extension-not-found', $name );
+		}
+		$jsonFile = $type . '.json';
+		$fullJsonFile = "$absDir/$jsonFile";
+		$isJson = file_exists( $fullJsonFile );
+		$isPhp = false;
+		if ( !$isJson ) {
+			// Only fallback to PHP file if JSON doesn't exist
+			$fullPhpFile = "$absDir/$name.php";
+			$isPhp = file_exists( $fullPhpFile );
+		}
+		if ( !$isJson && !$isPhp ) {
+			return Status::newFatal( 'config-extension-not-found', $name );
+		}
+
+		// Extension exists. Now see if there are screenshots
+		$info = [];
+		if ( is_dir( "$absDir/screenshots" ) ) {
+			$paths = glob( "$absDir/screenshots/*.png" );
+			foreach ( $paths as $path ) {
+				$info['screenshots'][] = str_replace( $absDir, $relDir, $path );
+			}
+		}
+
+		if ( $isJson ) {
+			$jsonStatus = $this->readExtension( $fullJsonFile );
+			if ( !$jsonStatus->isOK() ) {
+				return $jsonStatus;
+			}
+			$info += $jsonStatus->value;
+		}
+
+		return Status::newGood( $info );
+	}
+
+	/**
+	 * @param string $fullJsonFile
+	 * @param array $extDeps
+	 * @param array $skinDeps
+	 *
+	 * @return Status On success, an array of extension information is in $status->value. On
+	 *    failure, the Status object will have an error list.
+	 */
+	private function readExtension( $fullJsonFile, $extDeps = [], $skinDeps = [] ) {
+		$load = [
+			$fullJsonFile => 1
+		];
+		if ( $extDeps ) {
+			$extDir = $this->getVar( 'IP' ) . '/extensions';
+			foreach ( $extDeps as $dep ) {
+				$fname = "$extDir/$dep/extension.json";
+				if ( !file_exists( $fname ) ) {
+					return Status::newFatal( 'config-extension-not-found', $dep );
+				}
+				$load[$fname] = 1;
+			}
+		}
+		if ( $skinDeps ) {
+			$skinDir = $this->getVar( 'IP' ) . '/skins';
+			foreach ( $skinDeps as $dep ) {
+				$fname = "$skinDir/$dep/skin.json";
+				if ( !file_exists( $fname ) ) {
+					return Status::newFatal( 'config-extension-not-found', $dep );
+				}
+				$load[$fname] = 1;
+			}
+		}
+		$registry = new ExtensionRegistry();
+		try {
+			$info = $registry->readFromQueue( $load );
+		} catch ( ExtensionDependencyError $e ) {
+			if ( $e->incompatibleCore || $e->incompatibleSkins
+				|| $e->incompatibleExtensions
+			) {
+				// If something is incompatible with a dependency, we have no real
+				// option besides skipping it
+				return Status::newFatal( 'config-extension-dependency',
+					basename( dirname( $fullJsonFile ) ), $e->getMessage() );
+			} elseif ( $e->missingExtensions || $e->missingSkins ) {
+				// There's an extension missing in the dependency tree,
+				// so add those to the dependency list and try again
+				return $this->readExtension(
+					$fullJsonFile,
+					array_merge( $extDeps, $e->missingExtensions ),
+					array_merge( $skinDeps, $e->missingSkins )
+				);
+			}
+			// Some other kind of dependency error?
+			return Status::newFatal( 'config-extension-dependency',
+				basename( dirname( $fullJsonFile ) ), $e->getMessage() );
+		}
+		$ret = [];
+		// The order of credits will be the order of $load,
+		// so the first extension is the one we want to load,
+		// everything else is a dependency
+		$i = 0;
+		foreach ( $info['credits'] as $name => $credit ) {
+			$i++;
+			if ( $i == 1 ) {
+				// Extension we want to load
+				continue;
+			}
+			$type = basename( $credit['path'] ) === 'skin.json' ? 'skins' : 'extensions';
+			$ret['requires'][$type][] = $credit['name'];
+		}
+		$credits = array_values( $info['credits'] )[0];
+		if ( isset( $credits['url'] ) ) {
+			$ret['url'] = $credits['url'];
+		}
+		$ret['type'] = $credits['type'];
+
+		return Status::newGood( $ret );
 	}
 
 	/**
@@ -1345,6 +1471,10 @@ abstract class Installer {
 		$exts = $this->getVar( '_Extensions' );
 		$IP = $this->getVar( 'IP' );
 
+		// Marker for DatabaseUpdater::loadExtensions so we don't
+		// double load extensions
+		define( 'MW_EXTENSIONS_LOADED', true );
+
 		/**
 		 * We need to include DefaultSettings before including extensions to avoid
 		 * warnings about unset variables. However, the only thing we really
@@ -1371,9 +1501,8 @@ abstract class Installer {
 		$data = $registry->readFromQueue( $queue );
 		$wgAutoloadClasses += $data['autoload'];
 
-		$hooksWeWant = isset( $wgHooks['LoadExtensionSchemaUpdates'] ) ?
-			/** @suppress PhanUndeclaredVariable $wgHooks is set by DefaultSettings */
-			$wgHooks['LoadExtensionSchemaUpdates'] : [];
+		/** @suppress PhanUndeclaredVariable $wgHooks is set by DefaultSettings */
+		$hooksWeWant = $wgHooks['LoadExtensionSchemaUpdates'] ?? [];
 
 		if ( isset( $data['globals']['wgHooks']['LoadExtensionSchemaUpdates'] ) ) {
 			$hooksWeWant = array_merge_recursive(
@@ -1512,28 +1641,16 @@ abstract class Installer {
 	protected function doGenerateKeys( $keys ) {
 		$status = Status::newGood();
 
-		$strong = true;
 		foreach ( $keys as $name => $length ) {
-			$secretKey = MWCryptRand::generateHex( $length, true );
-			if ( !MWCryptRand::wasStrong() ) {
-				$strong = false;
-			}
-
+			$secretKey = MWCryptRand::generateHex( $length );
 			$this->setVar( $name, $secretKey );
-		}
-
-		if ( !$strong ) {
-			$names = array_keys( $keys );
-			$names = preg_replace( '/^(.*)$/', '\$$1', $names );
-			global $wgLang;
-			$status->warning( 'config-insecure-keys', $wgLang->listToText( $names ), count( $names ) );
 		}
 
 		return $status;
 	}
 
 	/**
-	 * Create the first user account, grant it sysop and bureaucrat rights
+	 * Create the first user account, grant it sysop, bureaucrat and interface-admin rights
 	 *
 	 * @return Status
 	 */
@@ -1557,6 +1674,7 @@ abstract class Installer {
 
 			$user->addGroup( 'sysop' );
 			$user->addGroup( 'bureaucrat' );
+			$user->addGroup( 'interface-admin' );
 			if ( $this->getVar( '_AdminEmail' ) ) {
 				$user->setEmail( $this->getVar( '_AdminEmail' ) );
 			}
@@ -1652,12 +1770,9 @@ abstract class Installer {
 		$GLOBALS['wgLanguageConverterCacheType'] = CACHE_NONE;
 		// Debug-friendly
 		$GLOBALS['wgShowExceptionDetails'] = true;
+		$GLOBALS['wgShowHostnames'] = true;
 		// Don't break forms
 		$GLOBALS['wgExternalLinkTarget'] = '_blank';
-
-		// Extended debugging
-		$GLOBALS['wgShowSQLErrors'] = true;
-		$GLOBALS['wgShowDBErrorBacktrace'] = true;
 
 		// Allow multiple ob_flush() calls
 		$GLOBALS['wgDisableOutputCompression'] = true;

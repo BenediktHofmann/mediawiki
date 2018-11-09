@@ -59,6 +59,26 @@ class ApiErrorFormatter {
 	}
 
 	/**
+	 * Return a formatter like this one but with a different format
+	 *
+	 * @since 1.32
+	 * @param string $format New format.
+	 * @return ApiErrorFormatter
+	 */
+	public function newWithFormat( $format ) {
+		return new self( $this->result, $this->lang, $format, $this->useDB );
+	}
+
+	/**
+	 * Fetch the format for this formatter
+	 * @since 1.32
+	 * @return string
+	 */
+	public function getFormat() {
+		return $this->format;
+	}
+
+	/**
 	 * Fetch the Language for this formatter
 	 * @since 1.29
 	 * @return Language
@@ -164,16 +184,6 @@ class ApiErrorFormatter {
 			$msg = Message::newFromSpecifier( $exception );
 			$params = [];
 		} else {
-			// Extract code and data from the exception, if applicable
-			if ( $exception instanceof UsageException ) {
-				$data = $exception->getMessageArray();
-				if ( !$options['code'] ) {
-					$options['code'] = $data['code'];
-				}
-				unset( $data['code'], $data['info'] );
-				$options['data'] = array_merge( $data, $options['data'] );
-			}
-
 			if ( isset( $options['wrap'] ) ) {
 				$msg = $options['wrap'];
 			} else {
@@ -203,7 +213,7 @@ class ApiErrorFormatter {
 	public function formatException( $exception, array $options = [] ) {
 		return $this->formatMessage(
 			$this->getMessageFromException( $exception, $options ),
-			isset( $options['format'] ) ? $options['format'] : null
+			$options['format'] ?? null
 		);
 	}
 
@@ -369,6 +379,10 @@ class ApiErrorFormatter_BackCompat extends ApiErrorFormatter {
 	 */
 	public function __construct( ApiResult $result ) {
 		parent::__construct( $result, Language::factory( 'en' ), 'none', false );
+	}
+
+	public function getFormat() {
+		return 'bc';
 	}
 
 	public function arrayFromStatus( StatusValue $status, $type = 'error', $format = null ) {

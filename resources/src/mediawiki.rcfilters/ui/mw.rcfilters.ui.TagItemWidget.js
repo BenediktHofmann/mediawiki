@@ -1,4 +1,4 @@
-( function ( mw, $ ) {
+( function () {
 	/**
 	 * Extend OOUI's TagItemWidget to also display a popup on hover.
 	 *
@@ -87,11 +87,17 @@
 		// Update label if needed
 		var labelMsg = this.itemModel.getLabelMessageKey( this.invertModel.isSelected() );
 		if ( labelMsg ) {
-			this.setLabel( $( '<div>' ).html(
-				mw.message( labelMsg, mw.html.escape( this.itemModel.getLabel() ) ).parse()
+			this.setLabel( $( '<div>' ).append(
+				$( '<bdi>' ).html(
+					mw.message( labelMsg, mw.html.escape( this.itemModel.getLabel() ) ).parse()
+				)
 			).contents() );
 		} else {
-			this.setLabel( this.itemModel.getLabel() );
+			this.setLabel(
+				$( '<bdi>' ).append(
+					this.itemModel.getLabel()
+				)
+			);
 		}
 
 		this.setCurrentMuteState();
@@ -214,4 +220,4 @@
 		this.itemModel.disconnect( this );
 		this.closeButton.disconnect( this );
 	};
-}( mediaWiki, jQuery ) );
+}() );

@@ -18,6 +18,11 @@ class ImportableUploadRevisionImporter implements UploadRevisionImporter {
 	private $enableUploads;
 
 	/**
+	 * @var bool
+	 */
+	private $shouldCreateNullRevision = true;
+
+	/**
 	 * @param bool $enableUploads
 	 * @param LoggerInterface $logger
 	 */
@@ -27,6 +32,16 @@ class ImportableUploadRevisionImporter implements UploadRevisionImporter {
 	) {
 		$this->enableUploads = $enableUploads;
 		$this->logger = $logger;
+	}
+
+	/**
+	 * Setting this to false will deactivate the creation of a null revision as part of the upload
+	 * process logging in LocalFile::recordUpload2, see T193621
+	 *
+	 * @param bool $shouldCreateNullRevision
+	 */
+	public function setNullRevisionCreation( $shouldCreateNullRevision ) {
+		$this->shouldCreateNullRevision = $shouldCreateNullRevision;
 	}
 
 	/**
@@ -50,7 +65,7 @@ class ImportableUploadRevisionImporter implements UploadRevisionImporter {
 			$file->load( File::READ_LATEST );
 			$this->logger->debug( __METHOD__ . 'Importing new file as ' . $file->getName() . "\n" );
 			if ( $file->exists() && $file->getTimestamp() > $importableRevision->getTimestamp() ) {
-				$archiveName = $file->getTimestamp() . '!' . $file->getName();
+				$archiveName = $importableRevision->getTimestamp() . '!' . $file->getName();
 				$file = OldLocalFile::newFromArchiveName( $importableRevision->getTitle(),
 					RepoGroup::singleton()->getLocalRepo(), $archiveName );
 				$this->logger->debug( __METHOD__ . "File already exists; importing as $archiveName\n" );
@@ -85,7 +100,8 @@ class ImportableUploadRevisionImporter implements UploadRevisionImporter {
 			return $this->newNotOkStatus();
 		}
 
-		$user = $importableRevision->getUserObj() ?: User::newFromName( $importableRevision->getUser() );
+		$user = $importableRevision->getUserObj()
+			?: User::newFromName( $importableRevision->getUser(), false );
 
 		# Do the actual upload
 		if ( $archiveName ) {
@@ -100,7 +116,9 @@ class ImportableUploadRevisionImporter implements UploadRevisionImporter {
 				$flags,
 				false,
 				$importableRevision->getTimestamp(),
-				$user
+				$user,
+				[],
+				$this->shouldCreateNullRevision
 			);
 		}
 

@@ -170,12 +170,9 @@ abstract class FileBackend implements LoggerAwareInterface {
 			throw new InvalidArgumentException(
 				"Backend domain ID not provided for '{$this->name}'." );
 		}
-		$this->lockManager = isset( $config['lockManager'] )
-			? $config['lockManager']
-			: new NullLockManager( [] );
-		$this->fileJournal = isset( $config['fileJournal'] )
-			? $config['fileJournal']
-			: FileJournal::factory( [ 'class' => NullFileJournal::class ], $this->name );
+		$this->lockManager = $config['lockManager'] ?? new NullLockManager( [] );
+		$this->fileJournal = $config['fileJournal']
+			?? FileJournal::factory( [ 'class' => NullFileJournal::class ], $this->name );
 		$this->readOnly = isset( $config['readOnly'] )
 			? (string)$config['readOnly']
 			: '';
@@ -185,18 +182,14 @@ abstract class FileBackend implements LoggerAwareInterface {
 		$this->concurrency = isset( $config['concurrency'] )
 			? (int)$config['concurrency']
 			: 50;
-		$this->obResetFunc = isset( $config['obResetFunc'] )
-			? $config['obResetFunc']
-			: [ $this, 'resetOutputBuffer' ];
-		$this->streamMimeFunc = isset( $config['streamMimeFunc'] )
-			? $config['streamMimeFunc']
-			: null;
-		$this->statusWrapper = isset( $config['statusWrapper'] ) ? $config['statusWrapper'] : null;
+		$this->obResetFunc = $config['obResetFunc'] ?? [ $this, 'resetOutputBuffer' ];
+		$this->streamMimeFunc = $config['streamMimeFunc'] ?? null;
+		$this->statusWrapper = $config['statusWrapper'] ?? null;
 
-		$this->profiler = isset( $config['profiler'] ) ? $config['profiler'] : null;
-		$this->logger = isset( $config['logger'] ) ? $config['logger'] : new \Psr\Log\NullLogger();
-		$this->statusWrapper = isset( $config['statusWrapper'] ) ? $config['statusWrapper'] : null;
-		$this->tmpDirectory = isset( $config['tmpDirectory'] ) ? $config['tmpDirectory'] : null;
+		$this->profiler = $config['profiler'] ?? null;
+		$this->logger = $config['logger'] ?? new \Psr\Log\NullLogger();
+		$this->statusWrapper = $config['statusWrapper'] ?? null;
+		$this->tmpDirectory = $config['tmpDirectory'] ?? null;
 	}
 
 	public function setLogger( LoggerInterface $logger ) {
@@ -401,7 +394,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 	 *                           This should only be used if all entries in the process
 	 *                           cache were added after the files were already locked. (since 1.20)
 	 *
-	 * @remarks Remarks on locking:
+	 * @note Remarks on locking:
 	 * File system paths given to operations should refer to files that are
 	 * already locked or otherwise safe from modification from other processes.
 	 * Normally these files will be new temp files, which should be adequate.
@@ -434,7 +427,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 		}
 
 		/** @noinspection PhpUnusedLocalVariableInspection */
-		$scope = $this->getScopedPHPBehaviorForOps(); // try to ignore client aborts
+		$scope = ScopedCallback::newScopedIgnoreUserAbort(); // try to ignore client aborts
 
 		return $this->doOperationsInternal( $ops, $opts );
 	}
@@ -672,7 +665,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 		}
 
 		/** @noinspection PhpUnusedLocalVariableInspection */
-		$scope = $this->getScopedPHPBehaviorForOps(); // try to ignore client aborts
+		$scope = ScopedCallback::newScopedIgnoreUserAbort(); // try to ignore client aborts
 
 		return $this->doQuickOperationsInternal( $ops );
 	}
@@ -819,7 +812,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 			return $this->newStatus( 'backend-fail-readonly', $this->name, $this->readOnly );
 		}
 		/** @noinspection PhpUnusedLocalVariableInspection */
-		$scope = $this->getScopedPHPBehaviorForOps(); // try to ignore client aborts
+		$scope = ScopedCallback::newScopedIgnoreUserAbort(); // try to ignore client aborts
 		return $this->doPrepare( $params );
 	}
 
@@ -850,7 +843,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 			return $this->newStatus( 'backend-fail-readonly', $this->name, $this->readOnly );
 		}
 		/** @noinspection PhpUnusedLocalVariableInspection */
-		$scope = $this->getScopedPHPBehaviorForOps(); // try to ignore client aborts
+		$scope = ScopedCallback::newScopedIgnoreUserAbort(); // try to ignore client aborts
 		return $this->doSecure( $params );
 	}
 
@@ -883,7 +876,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 			return $this->newStatus( 'backend-fail-readonly', $this->name, $this->readOnly );
 		}
 		/** @noinspection PhpUnusedLocalVariableInspection */
-		$scope = $this->getScopedPHPBehaviorForOps(); // try to ignore client aborts
+		$scope = ScopedCallback::newScopedIgnoreUserAbort(); // try to ignore client aborts
 		return $this->doPublish( $params );
 	}
 
@@ -909,7 +902,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 			return $this->newStatus( 'backend-fail-readonly', $this->name, $this->readOnly );
 		}
 		/** @noinspection PhpUnusedLocalVariableInspection */
-		$scope = $this->getScopedPHPBehaviorForOps(); // try to ignore client aborts
+		$scope = ScopedCallback::newScopedIgnoreUserAbort(); // try to ignore client aborts
 		return $this->doClean( $params );
 	}
 
@@ -918,24 +911,6 @@ abstract class FileBackend implements LoggerAwareInterface {
 	 * @param array $params
 	 */
 	abstract protected function doClean( array $params );
-
-	/**
-	 * Enter file operation scope.
-	 * This just makes PHP ignore user aborts/disconnects until the return
-	 * value leaves scope. This returns null and does nothing in CLI mode.
-	 *
-	 * @return ScopedCallback|null
-	 */
-	final protected function getScopedPHPBehaviorForOps() {
-		if ( PHP_SAPI != 'cli' ) { // https://bugs.php.net/bug.php?id=47540
-			$old = ignore_user_abort( true ); // avoid half-finished operations
-			return new ScopedCallback( function () use ( $old ) {
-				ignore_user_abort( $old );
-			} );
-		}
-
-		return null;
-	}
 
 	/**
 	 * Check if a file exists at a storage path in the backend.
@@ -1274,7 +1249,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 	 *
 	 * @see FileBackend::getFileStat()
 	 *
-	 * @param array $paths Storage paths (optional)
+	 * @param array|null $paths Storage paths (optional)
 	 */
 	abstract public function clearCache( array $paths = null );
 
@@ -1414,7 +1389,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 	 */
 	protected function resolveFSFileObjects( array $ops ) {
 		foreach ( $ops as &$op ) {
-			$src = isset( $op['src'] ) ? $op['src'] : null;
+			$src = $op['src'] ?? null;
 			if ( $src instanceof FSFile ) {
 				$op['srcRef'] = $src;
 				$op['src'] = $src->getPath();
@@ -1597,7 +1572,7 @@ abstract class FileBackend implements LoggerAwareInterface {
 	final protected function newStatus() {
 		$args = func_get_args();
 		if ( count( $args ) ) {
-			$sv = call_user_func_array( [ StatusValue::class, 'newFatal' ], $args );
+			$sv = StatusValue::newFatal( ...$args );
 		} else {
 			$sv = StatusValue::newGood();
 		}

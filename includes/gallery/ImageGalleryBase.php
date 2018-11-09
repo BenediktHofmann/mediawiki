@@ -20,6 +20,8 @@
  * @file
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Image gallery
  *
@@ -59,6 +61,15 @@ abstract class ImageGalleryBase extends ContextSource {
 	protected $mCaption = false;
 
 	/**
+	 * Length to truncate filename to in caption when using "showfilename".
+	 * A value of 'true' will truncate the filename to one line using CSS
+	 * and will be the behaviour after deprecation.
+	 *
+	 * @var bool|int
+	 */
+	protected $mCaptionLength = true;
+
+	/**
 	 * @var bool Hide blacklisted images?
 	 */
 	protected $mHideBadImages;
@@ -90,7 +101,6 @@ abstract class ImageGalleryBase extends ContextSource {
 	 * @throws MWException
 	 */
 	static function factory( $mode = false, IContextSource $context = null ) {
-		global $wgContLang;
 		self::loadModes();
 		if ( !$context ) {
 			$context = RequestContext::getMainAndWarn( __METHOD__ );
@@ -100,7 +110,7 @@ abstract class ImageGalleryBase extends ContextSource {
 			$mode = $galleryOptions['mode'];
 		}
 
-		$mode = $wgContLang->lc( $mode );
+		$mode = MediaWikiServices::getInstance()->getContentLanguage()->lc( $mode );
 
 		if ( isset( self::$modeMapping[$mode] ) ) {
 			$class = self::$modeMapping[$mode];

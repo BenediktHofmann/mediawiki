@@ -35,21 +35,15 @@ class Preferences {
 	 * @return DefaultPreferencesFactory
 	 */
 	protected static function getDefaultPreferencesFactory() {
-		global $wgContLang;
+		$services = MediaWikiServices::getInstance();
 		$authManager = AuthManager::singleton();
-		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
-		$config = MediaWikiServices::getInstance()->getMainConfig();
+		$linkRenderer = $services->getLinkRenderer();
+		$config = $services->getMainConfig();
 		$preferencesFactory = new DefaultPreferencesFactory(
-			$config, $wgContLang, $authManager, $linkRenderer
+			$config, $services->getContentLanguage(), $authManager,
+			$linkRenderer
 		);
 		return $preferencesFactory;
-	}
-
-	/**
-	 * @return array
-	 */
-	public static function getSaveBlacklist() {
-		throw new Exception( __METHOD__ . '() is deprecated and does nothing' );
 	}
 
 	/**
@@ -59,6 +53,7 @@ class Preferences {
 	 * @return array|null
 	 */
 	public static function getPreferences( $user, IContextSource $context ) {
+		wfDeprecated( __METHOD__, '1.31' );
 		$preferencesFactory = self::getDefaultPreferencesFactory();
 		return $preferencesFactory->getFormDescriptor( $user, $context );
 	}
@@ -201,6 +196,7 @@ class Preferences {
 	 * @param array &$defaultPreferences
 	 */
 	public static function miscPreferences( $user, IContextSource $context, &$defaultPreferences ) {
+		wfDeprecated( __METHOD__, '1.31' );
 	}
 
 	/**
@@ -262,77 +258,16 @@ class Preferences {
 	 * @param IContextSource $context
 	 * @param string $formClass
 	 * @param array $remove Array of items to remove
-	 * @return PreferencesForm|HTMLForm
+	 * @return PreferencesFormLegacy|HTMLForm
 	 */
 	public static function getFormObject(
 		$user,
 		IContextSource $context,
-		$formClass = PreferencesForm::class,
+		$formClass = PreferencesFormLegacy::class,
 		array $remove = []
 	) {
+		wfDeprecated( __METHOD__, '1.31' );
 		$preferencesFactory = self::getDefaultPreferencesFactory();
 		return $preferencesFactory->getForm( $user, $context, $formClass, $remove );
-	}
-
-	/**
-	 * @param IContextSource $context
-	 * @return array
-	 */
-	public static function getTimezoneOptions( IContextSource $context ) {
-		throw new Exception( __METHOD__ . '() is deprecated and does nothing' );
-	}
-
-	/**
-	 * @param string $value
-	 * @param array $alldata
-	 * @return int
-	 */
-	public static function filterIntval( $value, $alldata ) {
-		throw new Exception( __METHOD__ . '() is deprecated and does nothing' );
-	}
-
-	/**
-	 * @param string $tz
-	 * @param array $alldata
-	 * @return string
-	 */
-	public static function filterTimezoneInput( $tz, $alldata ) {
-		throw new Exception( __METHOD__ . '() is deprecated and does nothing' );
-	}
-
-	/**
-	 * Handle the form submission if everything validated properly
-	 *
-	 * @deprecated since 1.31, use PreferencesFactory
-	 *
-	 * @param array $formData
-	 * @param PreferencesForm $form
-	 * @return bool|Status|string
-	 */
-	public static function tryFormSubmit( $formData, $form ) {
-		$preferencesFactory = self::getDefaultPreferencesFactory();
-		return $preferencesFactory->legacySaveFormData( $formData, $form );
-	}
-
-	/**
-	 * @param array $formData
-	 * @param PreferencesForm $form
-	 * @return Status
-	 */
-	public static function tryUISubmit( $formData, $form ) {
-		$preferencesFactory = self::getDefaultPreferencesFactory();
-		return $preferencesFactory->legacySubmitForm( $formData, $form );
-	}
-
-	/**
-	 * Get a list of all time zones
-	 * @param Language $language Language used for the localized names
-	 * @return array A list of all time zones. The system name of the time zone is used as key and
-	 *  the value is an array which contains localized name, the timecorrection value used for
-	 *  preferences and the region
-	 * @since 1.26
-	 */
-	public static function getTimeZoneList( Language $language ) {
-		throw new Exception( __METHOD__ . '() is deprecated and does nothing' );
 	}
 }

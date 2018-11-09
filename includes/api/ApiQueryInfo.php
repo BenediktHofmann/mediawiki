@@ -34,7 +34,7 @@ class ApiQueryInfo extends ApiQueryBase {
 		$fld_readable = false, $fld_watched = false,
 		$fld_watchers = false, $fld_visitingwatchers = false,
 		$fld_notificationtimestamp = false,
-		$fld_preload = false, $fld_displaytitle = false;
+		$fld_preload = false, $fld_displaytitle = false, $fld_varianttitles = false;
 
 	private $params;
 
@@ -49,7 +49,7 @@ class ApiQueryInfo extends ApiQueryBase {
 		$pageLatest, $pageLength;
 
 	private $protections, $restrictionTypes, $watched, $watchers, $visitingwatchers,
-		$notificationtimestamps, $talkids, $subjectids, $displaytitles;
+		$notificationtimestamps, $talkids, $subjectids, $displaytitles, $variantTitles;
 	private $showZeroWatchers = false;
 
 	private $tokenFunctions;
@@ -306,6 +306,7 @@ class ApiQueryInfo extends ApiQueryBase {
 			$this->fld_readable = isset( $prop['readable'] );
 			$this->fld_preload = isset( $prop['preload'] );
 			$this->fld_displaytitle = isset( $prop['displaytitle'] );
+			$this->fld_varianttitles = isset( $prop['varianttitles'] );
 		}
 
 		$pageSet = $this->getPageSet();
@@ -366,6 +367,10 @@ class ApiQueryInfo extends ApiQueryBase {
 
 		if ( $this->fld_displaytitle ) {
 			$this->getDisplayTitle();
+		}
+
+		if ( $this->fld_varianttitles ) {
+			$this->getVariantTitles();
 		}
 
 		/** @var Title $title */
@@ -510,17 +515,39 @@ class ApiQueryInfo extends ApiQueryBase {
 			}
 		}
 
+		if ( $this->fld_varianttitles ) {
+			if ( isset( $this->variantTitles[$pageid] ) ) {
+				$pageInfo['varianttitles'] = $this->variantTitles[$pageid];
+			}
+		}
+
 		if ( $this->params['testactions'] ) {
-			$limit = $this->getMain()->canApiHighLimits() ? self::LIMIT_SML1 : self::LIMIT_SML2;
+			$limit = $this->getMain()->canApiHighLimits() ? self::LIMIT_SML2 : self::LIMIT_SML1;
 			if ( $this->countTestedActions >= $limit ) {
 				return null; // force a continuation
+			}
+
+			$detailLevel = $this->params['testactionsdetail'];
+			$rigor = $detailLevel === 'quick' ? 'quick' : 'secure';
+			$errorFormatter = $this->getErrorFormatter();
+			if ( $errorFormatter->getFormat() === 'bc' ) {
+				// Eew, no. Use a more modern format here.
+				$errorFormatter = $errorFormatter->newWithFormat( 'plaintext' );
 			}
 
 			$user = $this->getUser();
 			$pageInfo['actions'] = [];
 			foreach ( $this->params['testactions'] as $action ) {
 				$this->countTestedActions++;
-				$pageInfo['actions'][$action] = $title->userCan( $action, $user );
+
+				if ( $detailLevel === 'boolean' ) {
+					$pageInfo['actions'][$action] = $title->userCan( $action, $user );
+				} else {
+					$pageInfo['actions'][$action] = $errorFormatter->arrayFromStatus( $this->errorArrayToStatus(
+						$title->getUserPermissionsErrors( $action, $user, $rigor ),
+						$user
+					) );
+				}
 			}
 		}
 
@@ -740,6 +767,32 @@ class ApiQueryInfo extends ApiQueryBase {
 		}
 	}
 
+	private function getVariantTitles() {
+		if ( !count( $this->titles ) ) {
+			return;
+		}
+		$this->variantTitles = [];
+		foreach ( $this->titles as $pageId => $t ) {
+			$this->variantTitles[$pageId] = isset( $this->displaytitles[$pageId] )
+				? $this->getAllVariants( $this->displaytitles[$pageId] )
+				: $this->getAllVariants( $t->getText(), $t->getNamespace() );
+		}
+	}
+
+	private function getAllVariants( $text, $ns = NS_MAIN ) {
+		$result = [];
+		$contLang = MediaWikiServices::getInstance()->getContentLanguage();
+		foreach ( $contLang->getVariants() as $variant ) {
+			$convertTitle = $contLang->autoConvert( $text, $variant );
+			if ( $ns !== NS_MAIN ) {
+				$convertNs = $contLang->convertNamespace( $ns, $variant );
+				$convertTitle = $convertNs . ':' . $convertTitle;
+			}
+			$result[$variant] = $convertTitle;
+		}
+		return $result;
+	}
+
 	/**
 	 * Get information about watched status and put it in $this->watched
 	 * and $this->notificationtimestamps
@@ -879,6 +932,7 @@ class ApiQueryInfo extends ApiQueryBase {
 			'url',
 			'preload',
 			'displaytitle',
+			'varianttitles',
 		];
 		if ( array_diff( (array)$params['prop'], $publicProps ) ) {
 			return 'private';
@@ -912,14 +966,23 @@ class ApiQueryInfo extends ApiQueryBase {
 					'readable', # private
 					'preload',
 					'displaytitle',
+					'varianttitles',
 					// If you add more properties here, please consider whether they
 					// need to be added to getCacheMode()
 				],
 				ApiBase::PARAM_HELP_MSG_PER_VALUE => [],
+				ApiBase::PARAM_DEPRECATED_VALUES => [
+					'readable' => true, // Since 1.32
+				],
 			],
 			'testactions' => [
 				ApiBase::PARAM_TYPE => 'string',
 				ApiBase::PARAM_ISMULTI => true,
+			],
+			'testactionsdetail' => [
+				ApiBase::PARAM_TYPE => [ 'boolean', 'full', 'quick' ],
+				ApiBase::PARAM_DFLT => 'boolean',
+				ApiBase::PARAM_HELP_MSG_PER_VALUE => [],
 			],
 			'token' => [
 				ApiBase::PARAM_DEPRECATED => true,

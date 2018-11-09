@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * @group ContentHandler
  * @group Database
@@ -10,8 +12,6 @@
 class TitleMethodsTest extends MediaWikiLangTestCase {
 
 	protected function setUp() {
-		global $wgContLang;
-
 		parent::setUp();
 
 		$this->mergeMwGlobalArrayValue(
@@ -28,18 +28,6 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 				12302 => CONTENT_MODEL_JAVASCRIPT,
 			]
 		);
-
-		MWNamespace::clearCaches();
-		$wgContLang->resetNamespaces(); # reset namespace cache
-	}
-
-	protected function tearDown() {
-		global $wgContLang;
-
-		parent::tearDown();
-
-		MWNamespace::clearCaches();
-		$wgContLang->resetNamespaces(); # reset namespace cache
 	}
 
 	public static function provideEquals() {
@@ -172,15 +160,19 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 			[ 'User:Foo', false ],
 			[ 'User:Foo.js', false ],
 			[ 'User:Foo/bar.js', false ],
+			[ 'User:Foo/bar.json', false ],
 			[ 'User:Foo/bar.css', false ],
 			[ 'User:Foo/bar.JS', false ],
+			[ 'User:Foo/bar.JSON', false ],
 			[ 'User:Foo/bar.CSS', false ],
 			[ 'User talk:Foo/bar.css', false ],
 			[ 'User:Foo/bar.js.xxx', false ],
 			[ 'User:Foo/bar.xxx', false ],
 			[ 'MediaWiki:Foo.js', true ],
+			[ 'MediaWiki:Foo.json', true ],
 			[ 'MediaWiki:Foo.css', true ],
 			[ 'MediaWiki:Foo.JS', false ],
+			[ 'MediaWiki:Foo.JSON', false ],
 			[ 'MediaWiki:Foo.CSS', false ],
 			[ 'MediaWiki:Foo/bar.css', true ],
 			[ 'MediaWiki:Foo.css.xxx', false ],
@@ -207,14 +199,18 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 			[ 'User:Foo.js', false ],
 			[ 'User:Foo/bar.js', true ],
 			[ 'User:Foo/bar.JS', false ],
+			[ 'User:Foo/bar.json', true ],
+			[ 'User:Foo/bar.JSON', false ],
 			[ 'User:Foo/bar.css', true ],
 			[ 'User:Foo/bar.CSS', false ],
 			[ 'User talk:Foo/bar.css', false ],
 			[ 'User:Foo/bar.js.xxx', false ],
 			[ 'User:Foo/bar.xxx', false ],
 			[ 'MediaWiki:Foo.js', false ],
+			[ 'MediaWiki:Foo.json', false ],
 			[ 'MediaWiki:Foo.css', false ],
 			[ 'MediaWiki:Foo.JS', false ],
+			[ 'MediaWiki:Foo.JSON', false ],
 			[ 'MediaWiki:Foo.CSS', false ],
 			[ 'MediaWiki:Foo.css.xxx', false ],
 			[ 'TEST-JS:Foo', false ],
@@ -237,8 +233,10 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 			[ 'Help:Foo.css', false ],
 			[ 'User:Foo', false ],
 			[ 'User:Foo.js', false ],
+			[ 'User:Foo.json', false ],
 			[ 'User:Foo.css', false ],
 			[ 'User:Foo/bar.js', false ],
+			[ 'User:Foo/bar.json', false ],
 			[ 'User:Foo/bar.css', true ],
 		];
 	}
@@ -283,15 +281,19 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 			[ 'User:Foo', true ],
 			[ 'User:Foo.js', true ],
 			[ 'User:Foo/bar.js', false ],
+			[ 'User:Foo/bar.json', false ],
 			[ 'User:Foo/bar.css', false ],
 			[ 'User talk:Foo/bar.css', true ],
 			[ 'User:Foo/bar.js.xxx', true ],
 			[ 'User:Foo/bar.xxx', true ],
 			[ 'MediaWiki:Foo.js', false ],
 			[ 'User:Foo/bar.JS', true ],
+			[ 'User:Foo/bar.JSON', true ],
 			[ 'User:Foo/bar.CSS', true ],
+			[ 'MediaWiki:Foo.json', false ],
 			[ 'MediaWiki:Foo.css', false ],
 			[ 'MediaWiki:Foo.JS', true ],
+			[ 'MediaWiki:Foo.JSON', true ],
 			[ 'MediaWiki:Foo.CSS', true ],
 			[ 'MediaWiki:Foo.css.xxx', true ],
 			[ 'TEST-JS:Foo', false ],
@@ -339,7 +341,7 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 	 * @covers Title::clearCaches
 	 */
 	public function testClearCaches() {
-		$linkCache = LinkCache::singleton();
+		$linkCache = MediaWikiServices::getInstance()->getLinkCache();
 
 		$title1 = Title::newFromText( 'Foo' );
 		$linkCache->addGoodLinkObj( 23, $title1 );
@@ -349,5 +351,10 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 		$title2 = Title::newFromText( 'Foo' );
 		$this->assertNotSame( $title1, $title2, 'title cache should be empty' );
 		$this->assertEquals( 0, $linkCache->getGoodLinkID( 'Foo' ), 'link cache should be empty' );
+	}
+
+	function tearDown() {
+		Title::clearCaches();
+		parent::tearDown();
 	}
 }

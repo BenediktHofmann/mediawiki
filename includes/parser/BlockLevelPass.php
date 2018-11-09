@@ -236,7 +236,8 @@ class BlockLevelPass {
 					$term = $t2 = '';
 					if ( $this->findColonNoLinks( $t, $term, $t2 ) !== false ) {
 						$t = $t2;
-						$output .= $term . $this->nextItem( ':' );
+						// Trim whitespace in list items
+						$output .= trim( $term ) . $this->nextItem( ':' );
 					}
 				}
 			} elseif ( $prefixLength || $lastPrefixLength ) {
@@ -274,7 +275,8 @@ class BlockLevelPass {
 						# @todo FIXME: This is dupe of code above
 						if ( $this->findColonNoLinks( $t, $term, $t2 ) !== false ) {
 							$t = $t2;
-							$output .= $term . $this->nextItem( ':' );
+							// Trim whitespace in list items
+							$output .= trim( $term ) . $this->nextItem( ':' );
 						}
 					}
 					++$commonPrefixLength;
@@ -289,23 +291,42 @@ class BlockLevelPass {
 			if ( 0 == $prefixLength ) {
 				# No prefix (not in list)--go to paragraph mode
 				# @todo consider using a stack for nestable elements like span, table and div
+
+				// P-wrapping and indent-pre are suppressed inside, not outside
+				$blockElems = 'table|h1|h2|h3|h4|h5|h6|pre|p|ul|ol|dl';
+				// P-wrapping and indent-pre are suppressed outside, not inside
+				$antiBlockElems = 'td|th';
+
 				$openMatch = preg_match(
-					'/(?:<table|<h1|<h2|<h3|<h4|<h5|<h6|<pre|<tr|'
-						. '<p|<ul|<ol|<dl|<li|<\\/tr|<\\/td|<\\/th)\\b/iS',
+					'/<('
+						. "({$blockElems})|\\/({$antiBlockElems})|"
+						// Always suppresses
+						. '\\/?(tr|dt|dd|li)'
+						. ')\\b/iS',
 					$t
 				);
 				$closeMatch = preg_match(
-					'/(?:<\\/table|<\\/h1|<\\/h2|<\\/h3|<\\/h4|<\\/h5|<\\/h6|'
-						. '<td|<th|<\\/?blockquote|<\\/?div|<hr|<\\/pre|<\\/p|<\\/mw:|'
-						. Parser::MARKER_PREFIX
-						. '-pre|<\\/li|<\\/ul|<\\/ol|<\\/dl|<\\/?center)\\b/iS',
+					'/<('
+						. "\\/({$blockElems})|({$antiBlockElems})|"
+						// Never suppresses
+						. '\\/?(center|blockquote|div|hr|mw:)'
+						. ')\\b/iS',
 					$t
 				);
 
+				// Any match closes the paragraph, but only when `!$closeMatch`
+				// do we enter block mode.  The oddities with table rows and
+				// cells are to avoid paragraph wrapping in interstitial spaces
+				// leading to fostered content.
+
 				if ( $openMatch || $closeMatch ) {
 					$pendingPTag = false;
-					# @todo T7718: paragraph closed
-					$output .= $this->closeParagraph();
+					// Only close the paragraph if we're not inside a <pre> tag, or if
+					// that <pre> tag has just been opened
+					if ( !$this->inPre || $preOpenMatch ) {
+						// @todo T7718: paragraph closed
+						$output .= $this->closeParagraph();
+					}
 					if ( $preOpenMatch && !$preCloseMatch ) {
 						$this->inPre = true;
 					}
@@ -371,9 +392,12 @@ class BlockLevelPass {
 				$this->inPre = false;
 			}
 			if ( $pendingPTag === false ) {
-				$output .= $t;
 				if ( $prefixLength === 0 ) {
+					$output .= $t;
 					$output .= "\n";
+				} else {
+					// Trim whitespace in list items
+					$output .= trim( $t );
 				}
 			}
 		}

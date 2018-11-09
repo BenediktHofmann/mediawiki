@@ -21,13 +21,15 @@
  * @ingroup FileAbstraction
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Class to represent a file in the oldimage table
  *
  * @ingroup FileAbstraction
  */
 class OldLocalFile extends LocalFile {
-	/** @var string Timestamp */
+	/** @var string|int Timestamp */
 	protected $requestedTime;
 
 	/** @var string Archive name */
@@ -39,8 +41,8 @@ class OldLocalFile extends LocalFile {
 	/**
 	 * @param Title $title
 	 * @param FileRepo $repo
-	 * @param null|int $time Timestamp or null
-	 * @return OldLocalFile
+	 * @param string|int|null $time
+	 * @return self
 	 * @throws MWException
 	 */
 	static function newFromTitle( $title, $repo, $time = null ) {
@@ -56,7 +58,7 @@ class OldLocalFile extends LocalFile {
 	 * @param Title $title
 	 * @param FileRepo $repo
 	 * @param string $archiveName
-	 * @return OldLocalFile
+	 * @return self
 	 */
 	static function newFromArchiveName( $title, $repo, $archiveName ) {
 		return new self( $title, $repo, null, $archiveName );
@@ -65,7 +67,7 @@ class OldLocalFile extends LocalFile {
 	/**
 	 * @param stdClass $row
 	 * @param FileRepo $repo
-	 * @return OldLocalFile
+	 * @return self
 	 */
 	static function newFromRow( $row, $repo ) {
 		$title = Title::makeTitle( NS_FILE, $row->oi_name );
@@ -107,19 +109,20 @@ class OldLocalFile extends LocalFile {
 	/**
 	 * Fields in the oldimage table
 	 * @deprecated since 1.31, use self::getQueryInfo() instead.
-	 * @return array
+	 * @return string[]
 	 */
 	static function selectFields() {
 		global $wgActorTableSchemaMigrationStage;
 
 		wfDeprecated( __METHOD__, '1.31' );
-		if ( $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH ) {
+		if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_NEW ) {
 			// If code is using this instead of self::getQueryInfo(), there's a
 			// decent chance it's going to try to directly access
 			// $row->oi_user or $row->oi_user_text and we can't give it
-			// useful values here once those aren't being written anymore.
+			// useful values here once those aren't being used anymore.
 			throw new BadMethodCallException(
-				'Cannot use ' . __METHOD__ . ' when $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH'
+				'Cannot use ' . __METHOD__
+					. ' when $wgActorTableSchemaMigrationStage has SCHEMA_COMPAT_READ_NEW'
 			);
 		}
 
@@ -136,11 +139,11 @@ class OldLocalFile extends LocalFile {
 			'oi_minor_mime',
 			'oi_user',
 			'oi_user_text',
-			'oi_actor' => $wgActorTableSchemaMigrationStage > MIGRATION_OLD ? 'oi_actor' : null,
+			'oi_actor' => 'NULL',
 			'oi_timestamp',
 			'oi_deleted',
 			'oi_sha1',
-		] + CommentStore::getStore()->getFields( 'oi_description' );
+		] + MediaWikiServices::getInstance()->getCommentStore()->getFields( 'oi_description' );
 	}
 
 	/**
@@ -149,13 +152,13 @@ class OldLocalFile extends LocalFile {
 	 * @since 1.31
 	 * @param string[] $options
 	 *   - omit-lazy: Omit fields that are lazily cached.
-	 * @return array With three keys:
+	 * @return array[] With three keys:
 	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()`
 	 *   - fields: (string[]) to include in the `$vars` to `IDatabase->select()`
 	 *   - joins: (array) to include in the `$join_conds` to `IDatabase->select()`
 	 */
 	public static function getQueryInfo( array $options = [] ) {
-		$commentQuery = CommentStore::getStore()->getJoin( 'oi_description' );
+		$commentQuery = MediaWikiServices::getInstance()->getCommentStore()->getJoin( 'oi_description' );
 		$actorQuery = ActorMigration::newMigration()->getJoin( 'oi_user' );
 		$ret = [
 			'tables' => [ 'oldimage' ] + $commentQuery['tables'] + $actorQuery['tables'],
@@ -191,8 +194,8 @@ class OldLocalFile extends LocalFile {
 	/**
 	 * @param Title $title
 	 * @param FileRepo $repo
-	 * @param string $time Timestamp or null to load by archive name
-	 * @param string $archiveName Archive name or null to load by timestamp
+	 * @param string|int|null $time Timestamp or null to load by archive name
+	 * @param string|null $archiveName Archive name or null to load by timestamp
 	 * @throws MWException
 	 */
 	function __construct( $title, $repo, $time, $archiveName ) {
@@ -446,7 +449,8 @@ class OldLocalFile extends LocalFile {
 			return false;
 		}
 
-		$commentFields = CommentStore::getStore()->insert( $dbw, 'oi_description', $comment );
+		$commentFields = MediaWikiServices::getInstance()->getCommentStore()
+			->insert( $dbw, 'oi_description', $comment );
 		$actorFields = ActorMigration::newMigration()->getInsertValues( $dbw, 'oi_user', $user );
 		$dbw->insert( 'oldimage',
 			[

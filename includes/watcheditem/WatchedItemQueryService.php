@@ -13,7 +13,7 @@ use Wikimedia\Rdbms\LoadBalancer;
  * @file
  * @ingroup Watchlist
  *
- * @license GNU GPL v2+
+ * @license GPL-2.0-or-later
  */
 class WatchedItemQueryService {
 
@@ -25,6 +25,7 @@ class WatchedItemQueryService {
 	const INCLUDE_USER_ID = 'userid';
 	const INCLUDE_COMMENT = 'comment';
 	const INCLUDE_PATROL_INFO = 'patrol';
+	const INCLUDE_AUTOPATROL_INFO = 'autopatrol';
 	const INCLUDE_SIZES = 'sizes';
 	const INCLUDE_LOG_INFO = 'loginfo';
 	const INCLUDE_TAGS = 'tags';
@@ -40,6 +41,8 @@ class WatchedItemQueryService {
 	const FILTER_NOT_ANON = '!anon';
 	const FILTER_PATROLLED = 'patrolled';
 	const FILTER_NOT_PATROLLED = '!patrolled';
+	const FILTER_AUTOPATROLLED = 'autopatrolled';
+	const FILTER_NOT_AUTOPATROLLED = '!autopatrolled';
 	const FILTER_UNREAD = 'unread';
 	const FILTER_NOT_UNREAD = '!unread';
 	const FILTER_CHANGED = 'changed';
@@ -217,7 +220,7 @@ class WatchedItemQueryService {
 			$joinConds
 		);
 
-		$limit = isset( $dbOptions['LIMIT'] ) ? $dbOptions['LIMIT'] : INF;
+		$limit = $dbOptions['LIMIT'] ?? INF;
 		$items = [];
 		$startFrom = null;
 		foreach ( $res as $row ) {
@@ -317,8 +320,8 @@ class WatchedItemQueryService {
 	}
 
 	private function getRecentChangeFieldsFromRow( stdClass $row ) {
-		// This can be simplified to single array_filter call filtering by key value,
-		// once we stop supporting PHP 5.5
+		// FIXME: This can be simplified to single array_filter call filtering by key value,
+		// now we have stopped supporting PHP 5.5
 		$allFields = get_object_vars( $row );
 		$rcKeys = array_filter(
 			array_keys( $allFields ),
@@ -495,9 +498,15 @@ class WatchedItemQueryService {
 			// TODO: not sure if this should simply ignore patrolled filters if user does not have the patrol
 			// right, or maybe rather fail loud at this point, same as e.g. ApiQueryWatchlist does?
 			if ( in_array( self::FILTER_PATROLLED, $options['filters'] ) ) {
-				$conds[] = 'rc_patrolled != 0';
+				$conds[] = 'rc_patrolled != ' . RecentChange::PRC_UNPATROLLED;
 			} elseif ( in_array( self::FILTER_NOT_PATROLLED, $options['filters'] ) ) {
-				$conds[] = 'rc_patrolled = 0';
+				$conds['rc_patrolled'] = RecentChange::PRC_UNPATROLLED;
+			}
+
+			if ( in_array( self::FILTER_AUTOPATROLLED, $options['filters'] ) ) {
+				$conds['rc_patrolled'] = RecentChange::PRC_AUTOPATROLLED;
+			} elseif ( in_array( self::FILTER_NOT_AUTOPATROLLED, $options['filters'] ) ) {
+				$conds[] = 'rc_patrolled != ' . RecentChange::PRC_AUTOPATROLLED;
 			}
 		}
 

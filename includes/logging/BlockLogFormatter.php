@@ -18,7 +18,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @license http://www.gnu.org/copyleft/gpl.html GNU General Public License 2.0 or later
+ * @license GPL-2.0-or-later
  * @since 1.25
  */
 
@@ -68,6 +68,17 @@ class BlockLogFormatter extends LogFormatter {
 			);
 			$params[5] = isset( $params[5] ) ?
 				self::formatBlockFlags( $params[5], $this->context->getLanguage() ) : '';
+
+			// block restrictions
+			if ( isset( $params[6] ) ) {
+				$pages = $params[6]['pages'] ?? [];
+				$pages = array_map( function ( $page ){
+					return $this->makePageLink( Title::newFromText( ( $page ) ) );
+				}, $pages );
+
+				$params[6] = Message::rawParam( $this->context->getLanguage()->listToText( $pages ) );
+				$params[7] = count( $pages );
+			}
 		}
 
 		return $params;
@@ -130,7 +141,7 @@ class BlockLogFormatter extends LogFormatter {
 	 * @param Language $lang
 	 * @return string
 	 */
-	public static function formatBlockFlags( $flags, $lang ) {
+	public static function formatBlockFlags( $flags, Language $lang ) {
 		$flags = trim( $flags );
 		if ( $flags === '' ) {
 			return ''; // nothing to do
@@ -153,7 +164,7 @@ class BlockLogFormatter extends LogFormatter {
 	 * @param Language $lang Language object to use
 	 * @return string
 	 */
-	public static function formatBlockFlag( $flag, $lang ) {
+	public static function formatBlockFlag( $flag, Language $lang ) {
 		static $messages = [];
 
 		if ( !isset( $messages[$flag] ) ) {
@@ -188,12 +199,15 @@ class BlockLogFormatter extends LogFormatter {
 			'6:array:flags',
 			'6::flags' => '6:array:flags',
 		];
+
 		foreach ( $map as $index => $key ) {
 			if ( isset( $params[$index] ) ) {
 				$params[$key] = $params[$index];
 				unset( $params[$index] );
 			}
 		}
+
+		ksort( $params );
 
 		$subtype = $entry->getSubtype();
 		if ( $subtype === 'block' || $subtype === 'reblock' ) {
@@ -226,7 +240,37 @@ class BlockLogFormatter extends LogFormatter {
 		if ( isset( $ret['flags'] ) ) {
 			ApiResult::setIndexedTagName( $ret['flags'], 'f' );
 		}
+
+		if ( isset( $ret['restrictions']['pages'] ) ) {
+			$ret['restrictions']['pages'] = array_map( function ( $title ) {
+				return $this->formatParameterValueForApi( 'page', 'title-link', $title );
+			}, $ret['restrictions']['pages'] );
+			ApiResult::setIndexedTagName( $ret['restrictions']['pages'], 'p' );
+		}
+
 		return $ret;
 	}
 
+	protected function getMessageKey() {
+		$type = $this->entry->getType();
+		$subtype = $this->entry->getSubtype();
+		$sitewide = $this->entry->getParameters()['sitewide'] ?? true;
+
+		$key = "logentry-$type-$subtype";
+		if ( ( $subtype === 'block' || $subtype === 'reblock' ) && !$sitewide ) {
+			// $this->getMessageParameters is doing too much. We just need
+			// to check the presence of restrictions ($param[6]) and calling
+			// on parent gives us that
+			$params = parent::getMessageParameters();
+
+			// message changes depending on whether there are editing restrictions or not
+			if ( isset( $params[6] ) ) {
+				$key = "logentry-partial$type-$subtype";
+			} else {
+				$key = "logentry-non-editing-$type-$subtype";
+			}
+		}
+
+		return $key;
+	}
 }

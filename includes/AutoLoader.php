@@ -82,7 +82,7 @@ class AutoLoader {
 				if ( isset( self::$psr4Namespaces[$prefix] ) ) {
 					$relativeClass = substr( $className, $pos + 1 );
 					// Build the expected filename, and see if it exists
-					$file = self::$psr4Namespaces[$prefix] .
+					$file = self::$psr4Namespaces[$prefix] . '/' .
 						str_replace( '\\', '/', $relativeClass ) . '.php';
 					if ( file_exists( $file ) ) {
 						$filename = $file;
@@ -123,12 +123,25 @@ class AutoLoader {
 	 *
 	 * @see <http://www.php-fig.org/psr/psr-4/>
 	 * @private Only public for usage in AutoloadGenerator
+	 * @codeCoverageIgnore
 	 * @since 1.31
 	 * @return string[]
 	 */
 	public static function getAutoloadNamespaces() {
 		return [
-			'MediaWiki\\Linker\\' => __DIR__ .'/linker/'
+			'MediaWiki\\Auth\\' => __DIR__ . '/auth/',
+			'MediaWiki\\Block\\' => __DIR__ . '/block/',
+			'MediaWiki\\Edit\\' => __DIR__ . '/edit/',
+			'MediaWiki\\EditPage\\' => __DIR__ . '/editpage/',
+			'MediaWiki\\Linker\\' => __DIR__ . '/linker/',
+			'MediaWiki\\Preferences\\' => __DIR__ . '/preferences/',
+			'MediaWiki\\Revision\\' => __DIR__ . '/Revision/',
+			'MediaWiki\\Services\\' => __DIR__ . '/services/',
+			'MediaWiki\\Session\\' => __DIR__ . '/session/',
+			'MediaWiki\\Shell\\' => __DIR__ . '/shell/',
+			'MediaWiki\\Sparql\\' => __DIR__ . '/sparql/',
+			'MediaWiki\\Storage\\' => __DIR__ . '/Storage/',
+			'MediaWiki\\Tidy\\' => __DIR__ . '/tidy/',
 		];
 	}
 }

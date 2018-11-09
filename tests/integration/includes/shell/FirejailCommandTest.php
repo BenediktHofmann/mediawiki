@@ -7,13 +7,18 @@ use MediaWiki\Shell\Shell;
  * Integration tests to ensure that firejail actually prevents execution.
  * Meant to run on vagrant, although will probably work on other setups
  * as long as firejail and sudo has similar config.
+ *
+ * @group large
  * @group Shell
+ * @covers FirejailCommand
  */
 class FirejailCommandIntegrationTest extends PHPUnit\Framework\TestCase {
 
 	public function setUp() {
 		parent::setUp();
-		if ( Shell::command( 'which', 'firejail' )->execute()->getExitCode() ) {
+		if ( Shell::isDisabled() ) {
+			$this->markTestSkipped( 'shelling out is disabled' );
+		} elseif ( Shell::command( 'which', 'firejail' )->execute()->getExitCode() ) {
 			$this->markTestSkipped( 'firejail not installed' );
 		} elseif ( wfIsWindows() ) {
 			$this->markTestSkipped( 'test supports POSIX environments only' );
