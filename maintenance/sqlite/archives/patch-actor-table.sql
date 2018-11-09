@@ -30,7 +30,6 @@ CREATE TABLE /*_*/archive_tmp (
   ar_id int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
   ar_namespace int NOT NULL default 0,
   ar_title varchar(255) binary NOT NULL default '',
-  ar_text mediumblob NOT NULL,
   ar_comment varbinary(767) NOT NULL default '',
   ar_comment_id bigint unsigned NOT NULL DEFAULT 0,
   ar_user int unsigned NOT NULL default 0,
@@ -38,9 +37,8 @@ CREATE TABLE /*_*/archive_tmp (
   ar_actor bigint unsigned NOT NULL DEFAULT 0,
   ar_timestamp binary(14) NOT NULL default '',
   ar_minor_edit tinyint NOT NULL default 0,
-  ar_flags tinyblob NOT NULL,
   ar_rev_id int unsigned,
-  ar_text_id int unsigned,
+  ar_text_id int unsigned NOT NULL default 0,
   ar_deleted tinyint unsigned NOT NULL default 0,
   ar_len int unsigned,
   ar_page_id int unsigned,
@@ -51,15 +49,13 @@ CREATE TABLE /*_*/archive_tmp (
 ) /*$wgDBTableOptions*/;
 
 INSERT OR IGNORE INTO /*_*/archive_tmp (
-	ar_id, ar_namespace, ar_title, ar_text, ar_comment, ar_user, ar_user_text,
-	ar_timestamp, ar_minor_edit, ar_flags, ar_rev_id, ar_text_id, ar_deleted,
-	ar_len, ar_page_id, ar_parent_id, ar_sha1, ar_content_model,
-	ar_content_format)
+	ar_id, ar_namespace, ar_title, ar_comment, ar_user, ar_user_text,
+	ar_timestamp, ar_minor_edit, ar_rev_id, ar_text_id, ar_deleted, ar_len,
+	ar_page_id, ar_parent_id, ar_sha1, ar_content_model, ar_content_format)
   SELECT
-	ar_id, ar_namespace, ar_title, ar_text, ar_comment, ar_user, ar_user_text,
-	ar_timestamp, ar_minor_edit, ar_flags, ar_rev_id, ar_text_id, ar_deleted,
-	ar_len, ar_page_id, ar_parent_id, ar_sha1, ar_content_model,
-	ar_content_format
+	ar_id, ar_namespace, ar_title, ar_comment, ar_user, ar_user_text,
+	ar_timestamp, ar_minor_edit, ar_rev_id, ar_text_id, ar_deleted, ar_len,
+	ar_page_id, ar_parent_id, ar_sha1, ar_content_model, ar_content_format
   FROM /*_*/archive;
 
 DROP TABLE /*_*/archive;
@@ -134,6 +130,7 @@ CREATE TABLE /*_*/image_tmp (
   img_major_mime ENUM("unknown", "application", "audio", "image", "text", "video", "message", "model", "multipart", "chemical") NOT NULL default "unknown",
   img_minor_mime varbinary(100) NOT NULL default "unknown",
   img_description varbinary(767) NOT NULL default '',
+  img_description_id bigint unsigned NOT NULL DEFAULT 0,
   img_user int unsigned NOT NULL default 0,
   img_user_text varchar(255) binary NOT NULL DEFAULT '',
   img_actor bigint unsigned NOT NULL DEFAULT 0,
@@ -143,12 +140,12 @@ CREATE TABLE /*_*/image_tmp (
 
 INSERT OR IGNORE INTO /*_*/image_tmp (
 	img_name, img_size, img_width, img_height, img_metadata, img_bits,
-	img_media_type, img_major_mime, img_minor_mime, img_description, img_user,
-	img_user_text, img_timestamp, img_sha1)
+	img_media_type, img_major_mime, img_minor_mime, img_description,
+	img_description_id, img_user, img_user_text, img_timestamp, img_sha1)
   SELECT
 	img_name, img_size, img_width, img_height, img_metadata, img_bits,
-	img_media_type, img_major_mime, img_minor_mime, img_description, img_user,
-	img_user_text, img_timestamp, img_sha1
+	img_media_type, img_major_mime, img_minor_mime, img_description,
+	img_description_id, img_user, img_user_text, img_timestamp, img_sha1
   FROM /*_*/image;
 
 DROP TABLE /*_*/image;
@@ -303,7 +300,7 @@ CREATE INDEX /*i*/times ON /*_*/logging (log_timestamp);
 CREATE INDEX /*i*/log_user_type_time ON /*_*/logging (log_user, log_type, log_timestamp);
 CREATE INDEX /*i*/log_actor_type_time ON /*_*/logging (log_actor, log_type, log_timestamp);
 CREATE INDEX /*i*/log_page_id_time ON /*_*/logging (log_page,log_timestamp);
-CREATE INDEX /*i*/type_action ON /*_*/logging (log_type, log_action, log_timestamp);
+CREATE INDEX /*i*/log_type_action ON /*_*/logging (log_type, log_action, log_timestamp);
 CREATE INDEX /*i*/log_user_text_type_time ON /*_*/logging (log_user_text, log_type, log_timestamp);
 CREATE INDEX /*i*/log_user_text_time ON /*_*/logging (log_user_text, log_timestamp);
 

@@ -79,15 +79,9 @@ class FileBackendGroup {
 			$repoName = $info['name'];
 			// Local vars that used to be FSRepo members...
 			$directory = $info['directory'];
-			$deletedDir = isset( $info['deletedDir'] )
-				? $info['deletedDir']
-				: false; // deletion disabled
-			$thumbDir = isset( $info['thumbDir'] )
-				? $info['thumbDir']
-				: "{$directory}/thumb";
-			$transcodedDir = isset( $info['transcodedDir'] )
-				? $info['transcodedDir']
-				: "{$directory}/transcoded";
+			$deletedDir = $info['deletedDir'] ?? false; // deletion disabled
+			$thumbDir = $info['thumbDir'] ?? "{$directory}/thumb";
+			$transcodedDir = $info['transcodedDir'] ?? "{$directory}/transcoded";
 			// Get the FS backend configuration
 			$autoBackends[] = [
 				'name' => $backendName,
@@ -100,7 +94,7 @@ class FileBackendGroup {
 					"{$repoName}-deleted" => $deletedDir,
 					"{$repoName}-temp" => "{$directory}/temp"
 				],
-				'fileMode' => isset( $info['fileMode'] ) ? $info['fileMode'] : 0644,
+				'fileMode' => $info['fileMode'] ?? 0644,
 				'directoryMode' => $wgDirectoryMode,
 			];
 		}
@@ -112,7 +106,7 @@ class FileBackendGroup {
 	/**
 	 * Register an array of file backend configurations
 	 *
-	 * @param array $configs
+	 * @param array[] $configs
 	 * @param string|null $readOnlyReason
 	 * @throws InvalidArgumentException
 	 */
@@ -129,9 +123,7 @@ class FileBackendGroup {
 			}
 			$class = $config['class'];
 
-			$config['readOnly'] = !empty( $config['readOnly'] )
-				? $config['readOnly']
-				: $readOnlyReason;
+			$config['readOnly'] = $config['readOnly'] ?? $readOnlyReason;
 
 			unset( $config['class'] ); // backend won't need this
 			$this->backends[$name] = [
@@ -187,6 +179,7 @@ class FileBackendGroup {
 		$config = $this->backends[$name]['config'];
 		$config['class'] = $class;
 		$config += [ // set defaults
+			// @FIXME: this does not include the domain for b/c but it ideally should
 			'wikiId' => wfWikiID(), // e.g. "my_wiki-en_"
 			'mimeCallback' => [ $this, 'guessMimeInternal' ],
 			'obResetFunc' => 'wfResetOutputBuffers',

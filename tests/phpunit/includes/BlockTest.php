@@ -1,5 +1,8 @@
 <?php
 
+use MediaWiki\Block\BlockRestriction;
+use MediaWiki\Block\Restriction\PageRestriction;
+
 /**
  * @group Database
  * @group Blocking
@@ -84,7 +87,7 @@ class BlockTest extends MediaWikiLangTestCase {
 	 * per T28425
 	 * @covers Block::__construct
 	 */
-	public function testBug26425BlockTimestampDefaultsToTime() {
+	public function testT28425BlockTimestampDefaultsToTime() {
 		$user = $this->getUserForBlocking();
 		$block = $this->addBlockForUser( $user );
 		$madeAt = wfTimestamp( TS_MW );
@@ -103,10 +106,10 @@ class BlockTest extends MediaWikiLangTestCase {
 	 * because the new function didn't accept empty strings like Block::load()
 	 * had. Regression T31116.
 	 *
-	 * @dataProvider provideBug29116Data
+	 * @dataProvider provideT31116Data
 	 * @covers Block::newFromTarget
 	 */
-	public function testBug29116NewFromTargetWithEmptyIp( $vagueTarget ) {
+	public function testT31116NewFromTargetWithEmptyIp( $vagueTarget ) {
 		$user = $this->getUserForBlocking();
 		$initialBlock = $this->addBlockForUser( $user );
 		$block = Block::newFromTarget( $user->getName(), $vagueTarget );
@@ -118,7 +121,7 @@ class BlockTest extends MediaWikiLangTestCase {
 		);
 	}
 
-	public static function provideBug29116Data() {
+	public static function provideT31116Data() {
 		return [
 			[ null ],
 			[ '' ],
@@ -460,4 +463,263 @@ class BlockTest extends MediaWikiLangTestCase {
 		}
 	}
 
+	/**
+	 * @covers Block::newFromRow
+	 */
+	public function testNewFromRow() {
+		$badActor = $this->getTestUser()->getUser();
+		$sysop = $this->getTestSysop()->getUser();
+
+		$block = new Block( [
+			'address' => $badActor->getName(),
+			'user' => $badActor->getId(),
+			'by' => $sysop->getId(),
+			'expiry' => 'infinity',
+		] );
+		$block->insert();
+
+		$blockQuery = Block::getQueryInfo();
+		$row = $this->db->select(
+			$blockQuery['tables'],
+			$blockQuery['fields'],
+			[
+				'ipb_id' => $block->getId(),
+			],
+			__METHOD__,
+			[],
+			$blockQuery['joins']
+		)->fetchObject();
+
+		$block = Block::newFromRow( $row );
+		$this->assertInstanceOf( Block::class, $block );
+		$this->assertEquals( $block->getBy(), $sysop->getId() );
+		$this->assertEquals( $block->getTarget()->getName(), $badActor->getName() );
+		$block->delete();
+	}
+
+	/**
+	 * @covers Block::equals
+	 */
+	public function testEquals() {
+		$block = new Block();
+
+		$this->assertTrue( $block->equals( $block ) );
+
+		$partial = new Block( [
+			'sitewide' => false,
+		] );
+		$this->assertFalse( $block->equals( $partial ) );
+	}
+
+	/**
+	 * @covers Block::isSitewide
+	 */
+	public function testIsSitewide() {
+		$block = new Block();
+		$this->assertTrue( $block->isSitewide() );
+
+		$block = new Block( [
+			'sitewide' => true,
+		] );
+		$this->assertTrue( $block->isSitewide() );
+
+		$block = new Block( [
+			'sitewide' => false,
+		] );
+		$this->assertFalse( $block->isSitewide() );
+
+		$block = new Block( [
+			'sitewide' => false,
+		] );
+		$block->isSitewide( true );
+		$this->assertTrue( $block->isSitewide() );
+	}
+
+	/**
+	 * @covers Block::getRestrictions
+	 * @covers Block::setRestrictions
+	 */
+	public function testRestrictions() {
+		$block = new Block();
+		$restrictions = [
+			new PageRestriction( 0, 1 )
+		];
+		$block->setRestrictions( $restrictions );
+
+		$this->assertSame( $restrictions, $block->getRestrictions() );
+	}
+
+	/**
+	 * @covers Block::getRestrictions
+	 * @covers Block::insert
+	 */
+	public function testRestrictionsFromDatabase() {
+		$badActor = $this->getTestUser()->getUser();
+		$sysop = $this->getTestSysop()->getUser();
+
+		$block = new Block( [
+			'address' => $badActor->getName(),
+			'user' => $badActor->getId(),
+			'by' => $sysop->getId(),
+			'expiry' => 'infinity',
+		] );
+		$page = $this->getExistingTestPage( 'Foo' );
+		$restriction = new PageRestriction( 0, $page->getId() );
+		$block->setRestrictions( [ $restriction ] );
+		$block->insert();
+
+		// Refresh the block from the database.
+		$block = Block::newFromID( $block->getId() );
+		$restrictions = $block->getRestrictions();
+		$this->assertCount( 1, $restrictions );
+		$this->assertTrue( $restriction->equals( $restrictions[0] ) );
+		$block->delete();
+	}
+
+	/**
+	 * @covers Block::insert
+	 */
+	public function testInsertExistingBlock() {
+		$badActor = $this->getTestUser()->getUser();
+		$sysop = $this->getTestSysop()->getUser();
+
+		$block = new Block( [
+			'address' => $badActor->getName(),
+			'user' => $badActor->getId(),
+			'by' => $sysop->getId(),
+			'expiry' => 'infinity',
+		] );
+		$page = $this->getExistingTestPage( 'Foo' );
+		$restriction = new PageRestriction( 0, $page->getId() );
+		$block->setRestrictions( [ $restriction ] );
+		$block->insert();
+
+		// Insert the block again, which should result in a failur
+		$result = $block->insert();
+
+		$this->assertFalse( $result );
+
+		// Ensure that there are no restrictions where the blockId is 0.
+		$count = $this->db->selectRowCount(
+			'ipblocks_restrictions',
+			'*',
+			[ 'ir_ipb_id' => 0 ],
+			__METHOD__
+		);
+		$this->assertSame( 0, $count );
+
+		$block->delete();
+	}
+
+	/**
+	 * @covers Block::preventsEdit
+	 */
+	public function testPreventsEditReturnsTrueOnSitewideBlock() {
+		$user = $this->getTestUser()->getUser();
+		$block = new Block( [
+			'expiry' => wfTimestamp( TS_MW, wfTimestamp() + ( 40 * 60 * 60 ) ),
+			'allowUsertalk' => true,
+			'sitewide' => true
+		] );
+
+		$block->setTarget( $user );
+		$block->setBlocker( $this->getTestSysop()->getUser() );
+		$block->insert();
+
+		$title = $this->getExistingTestPage( 'Foo' )->getTitle();
+
+		$this->assertTrue( $block->preventsEdit( $title ) );
+
+		$block->delete();
+	}
+
+	/**
+	 * @covers Block::preventsEdit
+	 */
+	public function testPreventsEditOnPartialBlock() {
+		$user = $this->getTestUser()->getUser();
+		$block = new Block( [
+			'expiry' => wfTimestamp( TS_MW, wfTimestamp() + ( 40 * 60 * 60 ) ),
+			'allowUsertalk' => true,
+			'sitewide' => false
+		] );
+
+		$block->setTarget( $user );
+		$block->setBlocker( $this->getTestSysop()->getUser() );
+		$block->insert();
+
+		$pageFoo = $this->getExistingTestPage( 'Foo' );
+		$pageBar = $this->getExistingTestPage( 'Bar' );
+
+		$pageRestriction = new PageRestriction( $block->getId(), $pageFoo->getId() );
+		BlockRestriction::insert( [ $pageRestriction ] );
+
+		$this->assertTrue( $block->preventsEdit( $pageFoo->getTitle() ) );
+		$this->assertFalse( $block->preventsEdit( $pageBar->getTitle() ) );
+
+		$block->delete();
+	}
+
+	/**
+	 * @covers Block::preventsEdit
+	 * @dataProvider preventsEditOnUserTalkProvider
+	 */
+	public function testPreventsEditOnUserTalkPage(
+		$allowUsertalk, $sitewide, $result, $blockAllowsUTEdit = true
+	) {
+		$this->setMwGlobals( [
+			'wgBlockAllowsUTEdit' => $blockAllowsUTEdit,
+		] );
+
+		$user = $this->getTestUser()->getUser();
+		$block = new Block( [
+			'expiry' => wfTimestamp( TS_MW, wfTimestamp() + ( 40 * 60 * 60 ) ),
+			'allowUsertalk' => $allowUsertalk,
+			'sitewide' => $sitewide
+		] );
+
+		$block->setTarget( $user );
+		$block->setBlocker( $this->getTestSysop()->getUser() );
+		$block->insert();
+
+		$this->assertEquals( $result, $block->preventsEdit( $user->getTalkPage() ) );
+		$block->delete();
+	}
+
+	public function preventsEditOnUserTalkProvider() {
+		return [
+			[
+				'allowUsertalk' => false,
+				'sitewide' => true,
+				'result' => true,
+			],
+			[
+				'allowUsertalk' => true,
+				'sitewide' => true,
+				'result' => false,
+			],
+			[
+				'allowUsertalk' => true,
+				'sitewide' => false,
+				'result' => false,
+			],
+			[
+				'allowUsertalk' => false,
+				'sitewide' => false,
+				'result' => true,
+			],
+			[
+				'allowUsertalk' => true,
+				'sitewide' => true,
+				'result' => true,
+				'blockAllowsUTEdit' => false
+			],
+			[
+				'allowUsertalk' => true,
+				'sitewide' => false,
+				'result' => true,
+				'blockAllowsUTEdit' => false
+			],
+		];
+	}
 }

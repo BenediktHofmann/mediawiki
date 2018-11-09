@@ -20,7 +20,7 @@
  */
 
 /**
- * Parser for rules of language conversion , parse rules in -{ }- tag.
+ * Parser for rules of language conversion, parse rules in -{ }- tag.
  * @ingroup Language
  * @author fdcn <fdcn64@gmail.com>, PhiLiP <philip.npc@gmail.com>
  */
@@ -29,13 +29,13 @@ class ConverterRule {
 	public $mConverter; // LanguageConverter object
 	public $mRuleDisplay = '';
 	public $mRuleTitle = false;
-	public $mRules = '';// string : the text of the rules
+	public $mRules = ''; // string : the text of the rules
 	public $mRulesAction = 'none';
 	public $mFlags = [];
 	public $mVariantFlags = [];
 	public $mConvTable = [];
-	public $mBidtable = [];// array of the translation in each variant
-	public $mUnidtable = [];// array of the translation in each variant
+	public $mBidtable = []; // array of the translation in each variant
+	public $mUnidtable = []; // array of the translation in each variant
 
 	/**
 	 * @param string $text The text between -{ and }-
@@ -330,7 +330,7 @@ class ConverterRule {
 
 	/**
 	 * Parse rules and flags.
-	 * @param string $variant Variant language code
+	 * @param string|null $variant Variant language code
 	 */
 	public function parse( $variant = null ) {
 		if ( !$variant ) {
@@ -399,11 +399,7 @@ class ConverterRule {
 				case 'N':
 					// process N flag: output current variant name
 					$ruleVar = trim( $rules );
-					if ( isset( $this->mConverter->mVariantNames[$ruleVar] ) ) {
-						$this->mRuleDisplay = $this->mConverter->mVariantNames[$ruleVar];
-					} else {
-						$this->mRuleDisplay = '';
-					}
+					$this->mRuleDisplay = $this->mConverter->mVariantNames[$ruleVar] ?? '';
 					break;
 				case 'D':
 					// process D flag: output rules description

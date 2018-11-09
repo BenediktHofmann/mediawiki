@@ -21,6 +21,7 @@
  */
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
 
 /**
  * This query action allows clients to retrieve a list of recently modified pages
@@ -233,6 +234,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 		}
 		if ( $this->fld_patrol ) {
 			$includeFields[] = WatchedItemQueryService::INCLUDE_PATROL_INFO;
+			$includeFields[] = WatchedItemQueryService::INCLUDE_AUTOPATROL_INFO;
 		}
 		if ( $this->fld_sizes ) {
 			$includeFields[] = WatchedItemQueryService::INCLUDE_SIZES;
@@ -254,6 +256,10 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 		|| ( isset( $show[WatchedItemQueryService::FILTER_ANON] )
 			&& isset( $show[WatchedItemQueryService::FILTER_NOT_ANON] ) )
 		|| ( isset( $show[WatchedItemQueryService::FILTER_PATROLLED] )
+			&& isset( $show[WatchedItemQueryService::FILTER_NOT_PATROLLED] ) )
+		|| ( isset( $show[WatchedItemQueryService::FILTER_AUTOPATROLLED] )
+			&& isset( $show[WatchedItemQueryService::FILTER_NOT_AUTOPATROLLED] ) )
+		|| ( isset( $show[WatchedItemQueryService::FILTER_AUTOPATROLLED] )
 			&& isset( $show[WatchedItemQueryService::FILTER_NOT_PATROLLED] ) )
 		|| ( isset( $show[WatchedItemQueryService::FILTER_UNREAD] )
 			&& isset( $show[WatchedItemQueryService::FILTER_NOT_UNREAD] ) );
@@ -297,13 +303,13 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 
 		/* Add user data and 'anon' flag, if user is anonymous. */
 		if ( $this->fld_user || $this->fld_userid ) {
-			if ( $recentChangeInfo['rc_deleted'] & Revision::DELETED_USER ) {
+			if ( $recentChangeInfo['rc_deleted'] & RevisionRecord::DELETED_USER ) {
 				$vals['userhidden'] = true;
 				$anyHidden = true;
 			}
-			if ( Revision::userCanBitfield(
+			if ( RevisionRecord::userCanBitfield(
 				$recentChangeInfo['rc_deleted'],
-				Revision::DELETED_USER,
+				RevisionRecord::DELETED_USER,
 				$user
 			) ) {
 				if ( $this->fld_userid ) {
@@ -348,13 +354,13 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 
 		/* Add edit summary / log summary. */
 		if ( $this->fld_comment || $this->fld_parsedcomment ) {
-			if ( $recentChangeInfo['rc_deleted'] & Revision::DELETED_COMMENT ) {
+			if ( $recentChangeInfo['rc_deleted'] & RevisionRecord::DELETED_COMMENT ) {
 				$vals['commenthidden'] = true;
 				$anyHidden = true;
 			}
-			if ( Revision::userCanBitfield(
+			if ( RevisionRecord::userCanBitfield(
 				$recentChangeInfo['rc_deleted'],
-				Revision::DELETED_COMMENT,
+				RevisionRecord::DELETED_COMMENT,
 				$user
 			) ) {
 				$comment = $this->commentStore->getComment( 'rc_comment', $recentChangeInfo )->text;
@@ -370,8 +376,9 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 
 		/* Add the patrolled flag */
 		if ( $this->fld_patrol ) {
-			$vals['patrolled'] = $recentChangeInfo['rc_patrolled'] == 1;
+			$vals['patrolled'] = $recentChangeInfo['rc_patrolled'] != RecentChange::PRC_UNPATROLLED;
 			$vals['unpatrolled'] = ChangesList::isUnpatrolled( (object)$recentChangeInfo, $user );
+			$vals['autopatrolled'] = $recentChangeInfo['rc_patrolled'] == RecentChange::PRC_AUTOPATROLLED;
 		}
 
 		if ( $this->fld_loginfo && $recentChangeInfo['rc_type'] == RC_LOG ) {
@@ -401,7 +408,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			}
 		}
 
-		if ( $anyHidden && ( $recentChangeInfo['rc_deleted'] & Revision::DELETED_RESTRICTED ) ) {
+		if ( $anyHidden && ( $recentChangeInfo['rc_deleted'] & RevisionRecord::DELETED_RESTRICTED ) ) {
 			$vals['suppressed'] = true;
 		}
 
@@ -477,6 +484,8 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 					WatchedItemQueryService::FILTER_NOT_ANON,
 					WatchedItemQueryService::FILTER_PATROLLED,
 					WatchedItemQueryService::FILTER_NOT_PATROLLED,
+					WatchedItemQueryService::FILTER_AUTOPATROLLED,
+					WatchedItemQueryService::FILTER_NOT_AUTOPATROLLED,
 					WatchedItemQueryService::FILTER_UNREAD,
 					WatchedItemQueryService::FILTER_NOT_UNREAD,
 				]

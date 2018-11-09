@@ -57,7 +57,7 @@ class MovePage {
 		// Convert into a Status object
 		if ( $errors ) {
 			foreach ( $errors as $error ) {
-				call_user_func_array( [ $status, 'fatal' ], $error );
+				$status->fatal( ...$error );
 			}
 		}
 
@@ -280,13 +280,7 @@ class MovePage {
 			[ 'cl_from' => $pageid ],
 			__METHOD__
 		);
-		if ( $this->newTitle->getNamespace() == NS_CATEGORY ) {
-			$type = 'subcat';
-		} elseif ( $this->newTitle->getNamespace() == NS_FILE ) {
-			$type = 'file';
-		} else {
-			$type = 'page';
-		}
+		$type = MWNamespace::getCategoryLinkType( $this->newTitle->getNamespace() );
 		foreach ( $prefixes as $prefixRow ) {
 			$prefix = $prefixRow->cl_sortkey_prefix;
 			$catTo = $prefixRow->cl_to;
@@ -415,7 +409,9 @@ class MovePage {
 			new AtomicSectionUpdate(
 				$dbw,
 				__METHOD__,
-				function () use ( $params ) {
+				// Hold onto $user to avoid HHVM bug where it no longer
+				// becomes a reference (T118683)
+				function () use ( $params, &$user ) {
 					Hooks::run( 'TitleMoveComplete', $params );
 				}
 			)
@@ -527,15 +523,6 @@ class MovePage {
 
 		$newpage = WikiPage::factory( $nt );
 
-		# Save a null revision in the page's history notifying of the move
-		$nullRevision = Revision::newNullRevision( $dbw, $oldid, $comment, true, $user );
-		if ( !is_object( $nullRevision ) ) {
-			throw new MWException( 'No valid null revision produced in ' . __METHOD__ );
-		}
-
-		$nullRevId = $nullRevision->insertOn( $dbw );
-		$logEntry->setAssociatedRevId( $nullRevId );
-
 		# Change the name of the target page:
 		$dbw->update( 'page',
 			/* SET */ [
@@ -545,6 +532,23 @@ class MovePage {
 			/* WHERE */ [ 'page_id' => $oldid ],
 			__METHOD__
 		);
+
+		# Save a null revision in the page's history notifying of the move
+		$nullRevision = Revision::newNullRevision( $dbw, $oldid, $comment, true, $user );
+		if ( !is_object( $nullRevision ) ) {
+			throw new MWException( 'Failed to create null revision while moving page ID '
+				. $oldid . ' to ' . $nt->getPrefixedDBkey() );
+		}
+
+		$nullRevId = $nullRevision->insertOn( $dbw );
+		$logEntry->setAssociatedRevId( $nullRevId );
+
+		/**
+		 * T163966
+		 * Increment user_editcount during page moves
+		 * Moved from SpecialMovepage.php per T195550
+		 */
+		$user->incEditCount();
 
 		if ( !$redirectContent ) {
 			// Clean up the old title *before* reset article id - T47348

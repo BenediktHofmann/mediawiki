@@ -87,7 +87,7 @@ abstract class MWHttpRequest implements LoggerAwareInterface {
 	 * @param string $url Url to use. If protocol-relative, will be expanded to an http:// URL
 	 * @param array $options (optional) extra params to pass (see Http::request())
 	 * @param string $caller The method making this request, for profiling
-	 * @param Profiler $profiler An instance of the profiler for profiling, or null
+	 * @param Profiler|null $profiler An instance of the profiler for profiling, or null
 	 */
 	public function __construct(
 		$url, array $options = [], $caller = __METHOD__, $profiler = null
@@ -97,11 +97,7 @@ abstract class MWHttpRequest implements LoggerAwareInterface {
 		$this->url = wfExpandUrl( $url, PROTO_HTTP );
 		$this->parsedUrl = wfParseUrl( $this->url );
 
-		if ( isset( $options['logger'] ) ) {
-			$this->logger = $options['logger'];
-		} else {
-			$this->logger = new NullLogger();
-		}
+		$this->logger = $options['logger'] ?? new NullLogger();
 
 		if ( !$this->parsedUrl || !Http::isValidURI( $this->url ) ) {
 			$this->status = StatusValue::newFatal( 'http-invalid-url', $url );
@@ -332,6 +328,7 @@ abstract class MWHttpRequest implements LoggerAwareInterface {
 		if ( is_null( $callback ) ) {
 			$callback = [ $this, 'read' ];
 		} elseif ( !is_callable( $callback ) ) {
+			$this->status->fatal( 'http-internal-error' );
 			throw new InvalidArgumentException( __METHOD__ . ': invalid callback' );
 		}
 		$this->callback = $callback;
@@ -386,6 +383,11 @@ abstract class MWHttpRequest implements LoggerAwareInterface {
 	 */
 	protected function parseHeader() {
 		$lastname = "";
+
+		// Failure without (valid) headers gets a response status of zero
+		if ( !$this->status->isOK() ) {
+			$this->respStatus = '0';
+		}
 
 		foreach ( $this->headerList as $header ) {
 			if ( preg_match( "#^HTTP/([0-9.]+) (.*)#", $header, $match ) ) {

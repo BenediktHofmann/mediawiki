@@ -307,7 +307,7 @@ class SpecialTags extends SpecialPage {
 
 			$headerText = $this->msg( 'tags-create-warnings-above', $tag,
 				count( $status->getWarningsArray() ) )->parseAsBlock() .
-				$out->parse( $status->getWikiText() ) .
+				$out->parseAsInterface( $status->getWikiText() ) .
 				$this->msg( 'tags-create-warnings-below' )->parseAsBlock();
 
 			$subform = HTMLForm::factory( 'ooui', $fields, $this->getContext() );
@@ -321,8 +321,7 @@ class SpecialTags extends SpecialPage {
 			$out->addBacklinkSubtitle( $this->getPageTitle() );
 			return true;
 		} else {
-			$out->addWikiText( "<div class=\"error\">\n" . $status->getWikiText() .
-				"\n</div>" );
+			$out->wrapWikiTextAsInterface( 'error', $status->getWikiText() );
 			return false;
 		}
 	}
@@ -340,8 +339,7 @@ class SpecialTags extends SpecialPage {
 		// is the tag actually able to be deleted?
 		$canDeleteResult = ChangeTags::canDeleteTag( $tag, $user );
 		if ( !$canDeleteResult->isGood() ) {
-			$out->addWikiText( "<div class=\"error\">\n" . $canDeleteResult->getWikiText() .
-				"\n</div>" );
+			$out->wrapWikiTextAsInterface( 'error', $canDeleteResult->getWikiText() );
 			if ( !$canDeleteResult->isOK() ) {
 				return;
 			}
@@ -402,8 +400,7 @@ class SpecialTags extends SpecialPage {
 		$func = $activate ? 'canActivateTag' : 'canDeactivateTag';
 		$result = ChangeTags::$func( $tag, $user );
 		if ( !$result->isGood() ) {
-			$out->addWikiText( "<div class=\"error\">\n" . $result->getWikiText() .
-				"\n</div>" );
+			$out->wrapWikiTextAsInterface( 'error', $result->getWikiText() );
 			if ( !$result->isOK() ) {
 				return;
 			}
@@ -449,14 +446,13 @@ class SpecialTags extends SpecialPage {
 			return true;
 		} elseif ( $status->isOK() && $form->tagAction === 'delete' ) {
 			// deletion succeeded, but hooks raised a warning
-			$out->addWikiText( $this->msg( 'tags-delete-warnings-after-delete', $tag,
+			$out->addWikiTextAsInterface( $this->msg( 'tags-delete-warnings-after-delete', $tag,
 				count( $status->getWarningsArray() ) )->text() . "\n" .
 				$status->getWikitext() );
 			$out->addReturnTo( $this->getPageTitle() );
 			return true;
 		} else {
-			$out->addWikiText( "<div class=\"error\">\n" . $status->getWikitext() .
-				"\n</div>" );
+			$out->wrapWikiTextAsInterface( 'error', $status->getWikitext() );
 			return false;
 		}
 	}

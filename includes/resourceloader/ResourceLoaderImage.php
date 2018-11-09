@@ -44,14 +44,18 @@ class ResourceLoaderImage {
 	 * @param string|array $descriptor Path to image file, or array structure containing paths
 	 * @param string $basePath Directory to which paths in descriptor refer
 	 * @param array $variants
+	 * @param string|null $defaultColor of the base variant
 	 * @throws InvalidArgumentException
 	 */
-	public function __construct( $name, $module, $descriptor, $basePath, $variants ) {
+	public function __construct( $name, $module, $descriptor, $basePath, $variants,
+		$defaultColor = null
+	) {
 		$this->name = $name;
 		$this->module = $module;
 		$this->descriptor = $descriptor;
 		$this->basePath = $basePath;
 		$this->variants = $variants;
+		$this->defaultColor = $defaultColor;
 
 		// Expand shorthands:
 		// [ "en,de,fr" => "foo.svg" ]
@@ -130,13 +134,23 @@ class ResourceLoaderImage {
 		$desc = $this->descriptor;
 		if ( is_string( $desc ) ) {
 			return $this->basePath . '/' . $desc;
-		} elseif ( isset( $desc['lang'][$context->getLanguage()] ) ) {
-			return $this->basePath . '/' . $desc['lang'][$context->getLanguage()];
-		} elseif ( isset( $desc[$context->getDirection()] ) ) {
-			return $this->basePath . '/' . $desc[$context->getDirection()];
-		} else {
-			return $this->basePath . '/' . $desc['default'];
 		}
+		if ( isset( $desc['lang'] ) ) {
+			$contextLang = $context->getLanguage();
+			if ( isset( $desc['lang'][$contextLang] ) ) {
+				return $this->basePath . '/' . $desc['lang'][$contextLang];
+			}
+			$fallbacks = Language::getFallbacksFor( $contextLang, Language::STRICT_FALLBACKS );
+			foreach ( $fallbacks as $lang ) {
+				if ( isset( $desc['lang'][$lang] ) ) {
+					return $this->basePath . '/' . $desc['lang'][$lang];
+				}
+			}
+		}
+		if ( isset( $desc[$context->getDirection()] ) ) {
+			return $this->basePath . '/' . $desc[$context->getDirection()];
+		}
+		return $this->basePath . '/' . $desc['default'];
 	}
 
 	/**
@@ -236,7 +250,10 @@ class ResourceLoaderImage {
 		if ( $variant && isset( $this->variants[$variant] ) ) {
 			$data = $this->variantize( $this->variants[$variant], $context );
 		} else {
-			$data = file_get_contents( $path );
+			$defaultColor = $this->defaultColor;
+			$data = $defaultColor ?
+				$this->variantize( [ 'color' => $defaultColor ], $context ) :
+				file_get_contents( $path );
 		}
 
 		if ( $format === 'rasterized' ) {

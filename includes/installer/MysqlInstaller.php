@@ -40,7 +40,6 @@ class MysqlInstaller extends DatabaseInstaller {
 		'wgDBpassword',
 		'wgDBprefix',
 		'wgDBTableOptions',
-		'wgDBmysql5',
 	];
 
 	protected $internalDefaults = [
@@ -193,11 +192,7 @@ class MysqlInstaller extends DatabaseInstaller {
 					$existingSchema = false;
 					$this->parent->showMessage( 'config-unknown-collation' );
 				}
-				if ( isset( $row->Engine ) ) {
-					$existingEngine = $row->Engine;
-				} else {
-					$existingEngine = $row->Type;
-				}
+				$existingEngine = $row->Engine ?? $row->Type;
 			}
 		} else {
 			$existingSchema = false;
@@ -414,20 +409,6 @@ class MysqlInstaller extends DatabaseInstaller {
 			$this->setVar( '_MysqlCharset', reset( $charsets ) );
 		}
 
-		// Do charset selector
-		if ( count( $charsets ) >= 2 ) {
-			// getRadioSet() builds a set of labeled radio buttons.
-			// For grep: The following messages are used as the item labels:
-			// config-mysql-binary, config-mysql-utf8
-			$s .= $this->getRadioSet( [
-				'var' => '_MysqlCharset',
-				'label' => 'config-mysql-charset',
-				'itemLabelPrefix' => 'config-mysql-',
-				'values' => $charsets
-			] );
-			$s .= $this->parent->getHelpBox( 'config-mysql-charset-help' );
-		}
-
 		return $s;
 	}
 
@@ -500,16 +481,30 @@ class MysqlInstaller extends DatabaseInstaller {
 		/** @var Database $conn */
 		$conn = $status->value;
 		$dbName = $this->getVar( 'wgDBname' );
-		if ( !$conn->selectDB( $dbName ) ) {
+		if ( !$this->databaseExists( $dbName ) ) {
 			$conn->query(
 				"CREATE DATABASE " . $conn->addIdentifierQuotes( $dbName ) . "CHARACTER SET utf8",
 				__METHOD__
 			);
-			$conn->selectDB( $dbName );
 		}
+		$conn->selectDB( $dbName );
 		$this->setupSchemaVars();
 
 		return $status;
+	}
+
+	/**
+	 * Try to see if a given database exists
+	 * @param string $dbName Database name to check
+	 * @return bool
+	 */
+	private function databaseExists( $dbName ) {
+		$encDatabase = $this->db->addQuotes( $dbName );
+
+		return $this->db->query(
+			"SELECT 1 FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = $encDatabase",
+			__METHOD__
+		)->numRows() > 0;
 	}
 
 	/**
@@ -671,7 +666,6 @@ class MysqlInstaller extends DatabaseInstaller {
 	}
 
 	public function getLocalSettings() {
-		$dbmysql5 = wfBoolToStr( $this->getVar( 'wgDBmysql5', true ) );
 		$prefix = LocalSettingsGenerator::escapePhpString( $this->getVar( 'wgDBprefix' ) );
 		$tblOpts = LocalSettingsGenerator::escapePhpString( $this->getTableOptions() );
 
@@ -679,9 +673,6 @@ class MysqlInstaller extends DatabaseInstaller {
 \$wgDBprefix = \"{$prefix}\";
 
 # MySQL table options to use during installation or update
-\$wgDBTableOptions = \"{$tblOpts}\";
-
-# Experimental charset support for MySQL 5.0.
-\$wgDBmysql5 = {$dbmysql5};";
+\$wgDBTableOptions = \"{$tblOpts}\";";
 	}
 }

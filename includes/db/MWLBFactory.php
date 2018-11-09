@@ -31,6 +31,10 @@ use Wikimedia\Rdbms\DatabaseDomain;
  * @ingroup Database
  */
 abstract class MWLBFactory {
+
+	/** @var array Cache of already-logged deprecation messages */
+	private static $loggedDeprecations = [];
+
 	/**
 	 * @param array $lbConf Config for LBFactory::__construct()
 	 * @param Config $mainConfig Main config object from MediaWikiServices
@@ -57,9 +61,11 @@ abstract class MWLBFactory {
 			'connLogger' => LoggerFactory::getInstance( 'DBConnection' ),
 			'perfLogger' => LoggerFactory::getInstance( 'DBPerformance' ),
 			'errorLogger' => [ MWExceptionHandler::class, 'logException' ],
+			'deprecationLogger' => [ static::class, 'logDeprecation' ],
 			'cliMode' => $wgCommandLineMode,
 			'hostname' => wfHostname(),
 			'readOnlyReason' => $readOnlyMode->getReason(),
+			'defaultGroup' => $mainConfig->get( 'DBDefaultGroup' ),
 		];
 
 		// When making changes here, remember to also specify MediaWiki-specific options
@@ -203,10 +209,8 @@ abstract class MWLBFactory {
 		return $class;
 	}
 
-	public static function setSchemaAliases( LBFactory $lbFactory ) {
-		$mainLB = $lbFactory->getMainLB();
-		$masterType = $mainLB->getServerType( $mainLB->getWriterIndex() );
-		if ( $masterType === 'mysql' ) {
+	public static function setSchemaAliases( LBFactory $lbFactory, Config $config ) {
+		if ( $config->get( 'DBtype' ) === 'mysql' ) {
 			/**
 			 * When SQLite indexes were introduced in r45764, it was noted that
 			 * SQLite requires index names to be unique within the whole database,
@@ -227,5 +231,23 @@ abstract class MWLBFactory {
 				'un_user_ip' => 'user_ip',
 			] );
 		}
+	}
+
+	/**
+	 * Log a database deprecation warning
+	 * @param string $msg Deprecation message
+	 */
+	public static function logDeprecation( $msg ) {
+		global $wgDevelopmentWarnings;
+
+		if ( isset( self::$loggedDeprecations[$msg] ) ) {
+			return;
+		}
+		self::$loggedDeprecations[$msg] = true;
+
+		if ( $wgDevelopmentWarnings ) {
+			trigger_error( $msg, E_USER_DEPRECATED );
+		}
+		wfDebugLog( 'deprecated', $msg, 'private' );
 	}
 }

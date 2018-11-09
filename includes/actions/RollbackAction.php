@@ -69,6 +69,11 @@ class RollbackAction extends FormlessAction {
 			] );
 		}
 
+		// @TODO: remove this hack once rollback uses POST (T88044)
+		$trxLimits = $this->context->getConfig()->get( 'TrxProfilerLimits' );
+		$trxProfiler = Profiler::instance()->getTransactionProfiler();
+		$trxProfiler->setExpectations( $trxLimits['POST'], __METHOD__ );
+
 		$data = null;
 		$errors = $this->page->doRollback(
 			$from,
@@ -96,8 +101,12 @@ class RollbackAction extends FormlessAction {
 				$current = $data['current'];
 
 				if ( $current->getComment() != '' ) {
-					$this->getOutput()->addHTML( $this->msg( 'editcomment' )->rawParams(
-						Linker::formatComment( $current->getComment() ) )->parse() );
+					$this->getOutput()->addWikiMsg(
+						'editcomment',
+						Message::rawParam(
+							Linker::formatComment( $current->getComment() )
+						)
+					);
 				}
 			}
 
@@ -151,7 +160,6 @@ class RollbackAction extends FormlessAction {
 			);
 			$de->showDiff( '', '' );
 		}
-		return;
 	}
 
 	protected function getDescription() {

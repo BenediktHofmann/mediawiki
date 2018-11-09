@@ -51,7 +51,7 @@ class LinkRendererTest extends MediaWikiLangTestCase {
 
 		// Query added
 		$this->assertEquals(
-			'<a href="/w/index.php?title=Foobar&amp;foo=bar" '. 'title="Foobar">Foobar</a>',
+			'<a href="/w/index.php?title=Foobar&amp;foo=bar" ' . 'title="Foobar">Foobar</a>',
 			$linkRenderer->makeKnownLink( $target, null, [], [ 'foo' => 'bar' ] )
 		);
 
@@ -131,6 +131,11 @@ class LinkRendererTest extends MediaWikiLangTestCase {
 			. '(page does not exist)"><script>evil()</script></a>',
 			$linkRenderer->makeLink( $foobar, new HtmlArmor( '<script>evil()</script>' ) )
 		);
+
+		$this->assertEquals(
+			'<a href="#fragment">fragment</a>',
+			$linkRenderer->makeLink( Title::newFromText( '#fragment' ) )
+		);
 	}
 
 	public function testGetLinkClasses() {
@@ -186,4 +191,8 @@ class LinkRendererTest extends MediaWikiLangTestCase {
 		);
 	}
 
+	function tearDown() {
+		Title::clearCaches();
+		parent::tearDown();
+	}
 }

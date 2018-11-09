@@ -51,20 +51,26 @@ $wgAutoloadClasses += [
 	'TidySupport' => "$testDir/parser/TidySupport.php",
 
 	# tests/phpunit
-	'MediaWikiTestCase' => "$testDir/phpunit/MediaWikiTestCase.php",
-	'MediaWikiPHPUnitTestListener' => "$testDir/phpunit/MediaWikiPHPUnitTestListener.php",
-	'MediaWikiLangTestCase' => "$testDir/phpunit/MediaWikiLangTestCase.php",
-	'ResourceLoaderTestCase' => "$testDir/phpunit/ResourceLoaderTestCase.php",
-	'ResourceLoaderTestModule' => "$testDir/phpunit/ResourceLoaderTestCase.php",
-	'ResourceLoaderFileTestModule' => "$testDir/phpunit/ResourceLoaderTestCase.php",
-	'ResourceLoaderFileModuleTestModule' => "$testDir/phpunit/ResourceLoaderTestCase.php",
 	'EmptyResourceLoader' => "$testDir/phpunit/ResourceLoaderTestCase.php",
-	'TestUser' => "$testDir/phpunit/includes/TestUser.php",
-	'TestUserRegistry' => "$testDir/phpunit/includes/TestUserRegistry.php",
+	'HamcrestPHPUnitIntegration' => "$testDir/phpunit/HamcrestPHPUnitIntegration.php",
 	'LessFileCompilationTest' => "$testDir/phpunit/LessFileCompilationTest.php",
 	'MediaWikiCoversValidator' => "$testDir/phpunit/MediaWikiCoversValidator.php",
+	'MediaWikiLangTestCase' => "$testDir/phpunit/MediaWikiLangTestCase.php",
+	'MediaWikiPHPUnitCommand' => "$testDir/phpunit/MediaWikiPHPUnitCommand.php",
+	'MediaWikiPHPUnitTestListener' => "$testDir/phpunit/MediaWikiPHPUnitTestListener.php",
+	'MediaWikiTestCase' => "$testDir/phpunit/MediaWikiTestCase.php",
+	'MediaWikiTestResult' => "$testDir/phpunit/MediaWikiTestResult.php",
+	'MediaWikiTestRunner' => "$testDir/phpunit/MediaWikiTestRunner.php",
+	'PHPUnit4And6Compat' => "$testDir/phpunit/PHPUnit4And6Compat.php",
+	'ResourceLoaderFileModuleTestModule' => "$testDir/phpunit/ResourceLoaderTestCase.php",
+	'ResourceLoaderFileTestModule' => "$testDir/phpunit/ResourceLoaderTestCase.php",
+	'ResourceLoaderTestCase' => "$testDir/phpunit/ResourceLoaderTestCase.php",
+	'ResourceLoaderTestModule' => "$testDir/phpunit/ResourceLoaderTestCase.php",
+	'TestUser' => "$testDir/phpunit/includes/TestUser.php",
+	'TestUserRegistry' => "$testDir/phpunit/includes/TestUserRegistry.php",
 
 	# tests/phpunit/includes
+	'PageArchiveTestBase' => "$testDir/phpunit/includes/page/PageArchiveTestBase.php",
 	'RevisionDbTestBase' => "$testDir/phpunit/includes/RevisionDbTestBase.php",
 	'RevisionTestModifyableContent' => "$testDir/phpunit/includes/RevisionTestModifyableContent.php",
 	'RevisionTestModifyableContentHandler' => "$testDir/phpunit/includes/RevisionTestModifyableContentHandler.php",
@@ -77,6 +83,7 @@ $wgAutoloadClasses += [
 	'ApiTestCase' => "$testDir/phpunit/includes/api/ApiTestCase.php",
 	'ApiTestCaseUpload' => "$testDir/phpunit/includes/api/ApiTestCaseUpload.php",
 	'ApiTestContext' => "$testDir/phpunit/includes/api/ApiTestContext.php",
+	'ApiUploadTestCase' => "$testDir/phpunit/includes/api/ApiUploadTestCase.php",
 	'MockApi' => "$testDir/phpunit/includes/api/MockApi.php",
 	'MockApiQueryBase' => "$testDir/phpunit/includes/api/MockApiQueryBase.php",
 	'UserWrapper' => "$testDir/phpunit/includes/api/UserWrapper.php",
@@ -85,6 +92,9 @@ $wgAutoloadClasses += [
 	# tests/phpunit/includes/auth
 	'MediaWiki\\Auth\\AuthenticationRequestTestCase' =>
 		"$testDir/phpunit/includes/auth/AuthenticationRequestTestCase.php",
+
+	# tests/phpunit/includes/block
+	'MediaWiki\\Tests\\Block\\Restriction\\RestrictionTestCase' => "$testDir/phpunit/includes/block/Restriction/RestrictionTestCase.php",
 
 	# tests/phpunit/includes/changes
 	'TestRecentChangesHelper' => "$testDir/phpunit/includes/changes/TestRecentChangesHelper.php",
@@ -95,6 +105,8 @@ $wgAutoloadClasses += [
 	'DummyContentForTesting' => "$testDir/phpunit/mocks/content/DummyContentForTesting.php",
 	'DummyNonTextContentHandler' => "$testDir/phpunit/mocks/content/DummyNonTextContentHandler.php",
 	'DummyNonTextContent' => "$testDir/phpunit/mocks/content/DummyNonTextContent.php",
+	'DummySerializeErrorContentHandler' =>
+		"$testDir/phpunit/mocks/content/DummySerializeErrorContentHandler.php",
 	'ContentHandlerTest' => "$testDir/phpunit/includes/content/ContentHandlerTest.php",
 	'JavaScriptContentTest' => "$testDir/phpunit/includes/content/JavaScriptContentTest.php",
 	'TextContentTest' => "$testDir/phpunit/includes/content/TextContentTest.php",
@@ -103,7 +115,12 @@ $wgAutoloadClasses += [
 	# tests/phpunit/includes/db
 	'DatabaseTestHelper' => "$testDir/phpunit/includes/db/DatabaseTestHelper.php",
 
+	# tests/phpunit/includes/debug
+	'TestDeprecatedClass' => "$testDir/phpunit/includes/debug/TestDeprecatedClass.php",
+	'TestDeprecatedSubclass' => "$testDir/phpunit/includes/debug/TestDeprecatedSubclass.php",
+
 	# tests/phpunit/includes/diff
+	'CustomDifferenceEngine' => "$testDir/phpunit/includes/diff/CustomDifferenceEngine.php",
 	'FakeDiffOp' => "$testDir/phpunit/includes/diff/FakeDiffOp.php",
 
 	# tests/phpunit/includes/externalstore
@@ -116,7 +133,7 @@ $wgAutoloadClasses += [
 	'WikiPageDbTestBase' => "$testDir/phpunit/includes/page/WikiPageDbTestBase.php",
 
 	# tests/phpunit/includes/parser
-	'ParserIntegrationTest' => "$testDir/phpunit/includes/parser/ParserIntegrationTest.php",
+	'ParserIntegrationTest' => "$testDir/phpunit/suites/ParserIntegrationTest.php",
 
 	# tests/phpunit/includes/password
 	'PasswordTestCase' => "$testDir/phpunit/includes/password/PasswordTestCase.php",
@@ -143,8 +160,15 @@ $wgAutoloadClasses += [
 	'SpecialPageTestBase' => "$testDir/phpunit/includes/specials/SpecialPageTestBase.php",
 	'SpecialPageExecutor' => "$testDir/phpunit/includes/specials/SpecialPageExecutor.php",
 
-	# tests/phpunit/includes/Storage
-	'MediaWiki\Tests\Storage\RevisionSlotsTest' => "$testDir/phpunit/includes/Storage/RevisionSlotsTest.php",
+	# tests/phpunit/includes/Revision
+	'MediaWiki\Tests\Revision\McrSchemaDetection' => "$testDir/phpunit/includes/Revision/McrSchemaDetection.php",
+	'MediaWiki\Tests\Revision\McrSchemaOverride' => "$testDir/phpunit/includes/Revision/McrSchemaOverride.php",
+	'MediaWiki\Tests\Revision\McrWriteBothSchemaOverride' => "$testDir/phpunit/includes/Revision/McrWriteBothSchemaOverride.php",
+	'MediaWiki\Tests\Revision\McrReadNewSchemaOverride' => "$testDir/phpunit/includes/Revision/McrReadNewSchemaOverride.php",
+	'MediaWiki\Tests\Revision\RevisionSlotsTest' => "$testDir/phpunit/includes/Revision/RevisionSlotsTest.php",
+	'MediaWiki\Tests\Revision\RevisionRecordTests' => "$testDir/phpunit/includes/Revision/RevisionRecordTests.php",
+	'MediaWiki\Tests\Revision\RevisionStoreDbTestBase' => "$testDir/phpunit/includes/Revision/RevisionStoreDbTestBase.php",
+	'MediaWiki\Tests\Revision\PreMcrSchemaOverride' => "$testDir/phpunit/includes/Revision/PreMcrSchemaOverride.php",
 
 	# tests/phpunit/languages
 	'LanguageClassesTestCase' => "$testDir/phpunit/languages/LanguageClassesTestCase.php",
@@ -174,9 +198,43 @@ $wgAutoloadClasses += [
 	'MediaWiki\\Session\\DummySessionBackend'
 		=> "$testDir/phpunit/mocks/session/DummySessionBackend.php",
 	'DummySessionProvider' => "$testDir/phpunit/mocks/session/DummySessionProvider.php",
+	'MockMessageLocalizer' => "$testDir/phpunit/mocks/MockMessageLocalizer.php",
+	'MockCompletionSearchEngine' => "$testDir/phpunit/mocks/search/MockCompletionSearchEngine.php",
+	'MockSearchEngine' => "$testDir/phpunit/mocks/search/MockSearchEngine.php",
+	'MockSearchResultSet' => "$testDir/phpunit/mocks/search/MockSearchResultSet.php",
+	'MockSearchResult' => "$testDir/phpunit/mocks/search/MockSearchResult.php",
 
 	# tests/suites
 	'ParserTestFileSuite' => "$testDir/phpunit/suites/ParserTestFileSuite.php",
 	'ParserTestTopLevelSuite' => "$testDir/phpunit/suites/ParserTestTopLevelSuite.php",
 ];
 // phpcs:enable
+
+/**
+ * Alias any PHPUnit 4 era PHPUnit_... class
+ * to it's PHPUnit 6 replacement. For most classes
+ * this is a direct _ -> \ replacement, but for
+ * some others we might need to maintain a manual
+ * mapping. Once we drop support for PHPUnit 4 this
+ * should be considered deprecated and eventually removed.
+ */
+spl_autoload_register( function ( $class ) {
+	if ( strpos( $class, 'PHPUnit_' ) !== 0 ) {
+		// Skip if it doesn't start with the old prefix
+		return;
+	}
+
+	// Classes that don't map 100%
+	$map = [
+		'PHPUnit_Framework_TestSuite_DataProvider' => 'PHPUnit\Framework\DataProviderTestSuite',
+		'PHPUnit_Framework_Error' => 'PHPUnit\Framework\Error\Error',
+	];
+
+	$newForm = $map[$class] ?? str_replace( '_', '\\', $class );
+
+	if ( class_exists( $newForm ) || interface_exists( $newForm ) ) {
+		// If the new class name exists, alias
+		// the old name to it.
+		class_alias( $newForm, $class );
+	}
+} );

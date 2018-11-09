@@ -79,11 +79,7 @@ class AuthManagerAuthPlugin extends \AuthPlugin {
 	}
 
 	public function getDomain() {
-		if ( isset( $this->domain ) ) {
-			return $this->domain;
-		} else {
-			return 'invaliddomain';
-		}
+		return $this->domain ?? 'invaliddomain';
 	}
 
 	public function validDomain( $domain ) {
@@ -197,35 +193,5 @@ class AuthManagerAuthPlugin extends \AuthPlugin {
 
 	public function domainList() {
 		return [];
-	}
-}
-
-/**
- * @since 1.27
- * @deprecated since 1.27
- */
-class AuthManagerAuthPluginUser extends \AuthPluginUser {
-	/** @var User */
-	private $user;
-
-	function __construct( $user ) {
-		$this->user = $user;
-	}
-
-	public function getId() {
-		return $this->user->getId();
-	}
-
-	public function isLocked() {
-		return $this->user->isLocked();
-	}
-
-	public function isHidden() {
-		return $this->user->isHidden();
-	}
-
-	public function resetAuthToken() {
-		\MediaWiki\Session\SessionManager::singleton()->invalidateSessionsForUser( $this->user );
-		return true;
 	}
 }

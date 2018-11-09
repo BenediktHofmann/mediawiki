@@ -110,10 +110,10 @@ class NewFilesPager extends RangeChronologicalPager {
 			$tables[] = 'recentchanges';
 			$conds['rc_type'] = RC_LOG;
 			$conds['rc_log_type'] = 'upload';
-			$conds['rc_patrolled'] = 0;
+			$conds['rc_patrolled'] = RecentChange::PRC_UNPATROLLED;
 			$conds['rc_namespace'] = NS_FILE;
 
-			if ( $wgActorTableSchemaMigrationStage === MIGRATION_NEW ) {
+			if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_NEW ) {
 				$jcond = 'rc_actor = ' . $imgQuery['fields']['img_actor'];
 			} else {
 				$rcQuery = ActorMigration::newMigration()->getJoin( 'rc_user' );

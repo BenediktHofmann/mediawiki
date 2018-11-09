@@ -22,7 +22,7 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use Wikimedia\Rdbms\ResultWrapper;
+use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
 
 /**
@@ -35,6 +35,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 	protected static $savedQueriesPreferenceName = 'rcfilters-wl-saved-queries';
 	protected static $daysPreferenceName = 'watchlistdays';
 	protected static $limitPreferenceName = 'wllimit';
+	protected static $collapsedPreferenceName = 'rcfilters-wl-collapsed';
 
 	private $maxDays;
 
@@ -60,11 +61,10 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$output = $this->getOutput();
 		$request = $this->getRequest();
 		$this->addHelpLink( 'Help:Watching pages' );
+		$output->addModuleStyles( [ 'mediawiki.special' ] );
 		$output->addModules( [
-			'mediawiki.special.changeslist.visitedstatus',
 			'mediawiki.special.watchlist',
 		] );
-		$output->addModuleStyles( [ 'mediawiki.special.watchlist.styles' ] );
 
 		$mode = SpecialEditWatchlist::getMode( $request, $subpage );
 		if ( $mode !== false ) {
@@ -111,10 +111,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 	}
 
 	public static function checkStructuredFilterUiEnabled( Config $config, User $user ) {
-		return (
-			$config->get( 'StructuredChangeFiltersOnWatchlist' ) &&
-			$user->getOption( 'rcenhancedfilters' )
-		);
+		return !$user->getOption( 'wlenhancedfilters-disable' );
 	}
 
 	/**
@@ -264,8 +261,12 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$reviewStatus = $this->getFilterGroup( 'reviewStatus' );
 		if ( $reviewStatus !== null ) {
 			// Conditional on feature being available and rights
-			$hidePatrolled = $reviewStatus->getFilter( 'hidepatrolled' );
-			$hidePatrolled->setDefault( $user->getBoolOption( 'watchlisthidepatrolled' ) );
+			if ( $user->getBoolOption( 'watchlisthidepatrolled' ) ) {
+				$reviewStatus->setDefault( 'unpatrolled' );
+				$legacyReviewStatus = $this->getFilterGroup( 'legacyReviewStatus' );
+				$legacyHidePatrolled = $legacyReviewStatus->getFilter( 'hidepatrolled' );
+				$legacyHidePatrolled->setDefault( true );
+			}
 		}
 
 		$authorship = $this->getFilterGroup( 'authorship' );
@@ -278,20 +279,6 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 			// Conditional on feature being available
 			$hideCategorization->setDefault( $user->getBoolOption( 'watchlisthidecategorization' ) );
 		}
-	}
-
-	/**
-	 * Get all custom filters
-	 *
-	 * @return array Map of filter URL param names to properties (msg/default)
-	 */
-	protected function getCustomFilters() {
-		if ( $this->customFilters === null ) {
-			$this->customFilters = parent::getCustomFilters();
-			Hooks::run( 'SpecialWatchlistFilters', [ $this, &$this->customFilters ], '1.23' );
-		}
-
-		return $this->customFilters;
 	}
 
 	/**
@@ -438,17 +425,6 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		);
 	}
 
-	protected function runMainQueryHook( &$tables, &$fields, &$conds, &$query_options,
-		&$join_conds, $opts
-	) {
-		return parent::runMainQueryHook( $tables, $fields, $conds, $query_options, $join_conds, $opts )
-			&& Hooks::run(
-				'SpecialWatchlistQuery',
-				[ &$conds, &$tables, &$join_conds, &$fields, $opts ],
-				'1.23'
-			);
-	}
-
 	/**
 	 * Return a IDatabase object for reading
 	 *
@@ -477,16 +453,17 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 	/**
 	 * Build and output the actual changes list.
 	 *
-	 * @param ResultWrapper $rows Database rows
+	 * @param IResultWrapper $rows Database rows
 	 * @param FormOptions $opts
 	 */
 	public function outputChangesList( $rows, $opts ) {
 		$dbr = $this->getDB();
 		$user = $this->getUser();
 		$output = $this->getOutput();
+		$services = MediaWikiServices::getInstance();
 
 		# Show a message about replica DB lag, if applicable
-		$lag = MediaWikiServices::getInstance()->getDBLoadBalancer()->safeGetLag( $dbr );
+		$lag = $services->getDBLoadBalancer()->safeGetLag( $dbr );
 		if ( $lag > 0 ) {
 			$output->showLagWarning( $lag );
 		}
@@ -517,7 +494,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 								$this->msg( 'watchlist-unwatch' )->text(), [
 									'class' => 'mw-unwatch-link',
 									'title' => $this->msg( 'tooltip-ca-unwatch' )->text()
-								], [ 'action' => 'unwatch' ] ) . '&#160;';
+								], [ 'action' => 'unwatch' ] ) . "\u{00A0}";
 				}
 			} );
 		}
@@ -526,7 +503,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		if ( $this->getConfig()->get( 'RCShowWatchingUsers' )
 			&& $user->getOption( 'shownumberswatching' )
 		) {
-			$watchedItemStore = MediaWikiServices::getInstance()->getWatchedItemStore();
+			$watchedItemStore = $services->getWatchedItemStore();
 		}
 
 		$s = $list->beginRecentChangesList();
@@ -675,7 +652,8 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 			[
 				'selected' => $opts['namespace'],
 				'all' => '',
-				'label' => $this->msg( 'namespace' )->text()
+				'label' => $this->msg( 'namespace' )->text(),
+				'in-user-lang' => true,
 			], [
 				'name' => 'namespace',
 				'id' => 'namespace',
@@ -747,45 +725,36 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 	}
 
 	function cutoffselector( $options ) {
-		// Cast everything to strings immediately, so that we know all of the values have the same
-		// precision, and can be compared with '==='. 2/24 has a few more decimal places than its
-		// default string representation, for example, and would confuse comparisons.
-
-		// Misleadingly, the 'days' option supports hours too.
-		$days = array_map( 'strval', [ 1 / 24, 2 / 24, 6 / 24, 12 / 24, 1, 3, 7 ] );
-
-		$userWatchlistOption = (string)$this->getUser()->getOption( 'watchlistdays' );
-		// add the user preference, if it isn't available already
-		if ( !in_array( $userWatchlistOption, $days ) && $userWatchlistOption !== '0' ) {
-			$days[] = $userWatchlistOption;
-		}
-
-		$maxDays = (string)$this->maxDays;
-		// add the maximum possible value, if it isn't available already
-		if ( !in_array( $maxDays, $days ) ) {
-			$days[] = $maxDays;
-		}
-
-		$selected = (string)$options['days'];
+		$selected = (float)$options['days'];
 		if ( $selected <= 0 ) {
-			$selected = $maxDays;
+			$selected = $this->maxDays;
 		}
 
-		// add the currently selected value, if it isn't available already
-		if ( !in_array( $selected, $days ) ) {
-			$days[] = $selected;
-		}
+		$selectedHours = round( $selected * 24 );
 
-		$select = new XmlSelect( 'days', 'days', $selected );
+		$hours = array_unique( array_filter( [
+			1,
+			2,
+			6,
+			12,
+			24,
+			72,
+			168,
+			24 * (float)$this->getUser()->getOption( 'watchlistdays', 0 ),
+			24 * $this->maxDays,
+			$selectedHours
+		] ) );
+		asort( $hours );
 
-		asort( $days );
-		foreach ( $days as $value ) {
-			if ( $value < 1 ) {
-				$name = $this->msg( 'hours' )->numParams( $value * 24 )->text();
+		$select = new XmlSelect( 'days', 'days', (float)( $selectedHours / 24 ) );
+
+		foreach ( $hours as $value ) {
+			if ( $value < 24 ) {
+				$name = $this->msg( 'hours' )->numParams( $value )->text();
 			} else {
-				$name = $this->msg( 'days' )->numParams( $value )->text();
+				$name = $this->msg( 'days' )->numParams( $value / 24 )->text();
 			}
-			$select->addOption( $name, $value );
+			$select->addOption( $name, (float)( $value / 24 ) );
 		}
 
 		return $select->getHTML() . "\n<br />\n";

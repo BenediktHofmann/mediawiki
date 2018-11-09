@@ -63,7 +63,7 @@ class LocalFile extends File {
 	/** @var string MEDIATYPE_xxx (bitmap, drawing, audio...) */
 	protected $media_type;
 
-	/** @var string MIME type, determined by MimeMagic::guessMimeType */
+	/** @var string MIME type, determined by MimeAnalyzer::guessMimeType */
 	protected $mime;
 
 	/** @var int Size in bytes (loadFromXxx) */
@@ -141,7 +141,7 @@ class LocalFile extends File {
 	 * @param FileRepo $repo
 	 * @param null $unused
 	 *
-	 * @return LocalFile
+	 * @return self
 	 */
 	static function newFromTitle( $title, $repo, $unused = null ) {
 		return new self( $title, $repo );
@@ -154,7 +154,7 @@ class LocalFile extends File {
 	 * @param stdClass $row
 	 * @param FileRepo $repo
 	 *
-	 * @return LocalFile
+	 * @return self
 	 */
 	static function newFromRow( $row, $repo ) {
 		$title = Title::makeTitle( NS_FILE, $row->img_name );
@@ -195,19 +195,20 @@ class LocalFile extends File {
 	/**
 	 * Fields in the image table
 	 * @deprecated since 1.31, use self::getQueryInfo() instead.
-	 * @return array
+	 * @return string[]
 	 */
 	static function selectFields() {
 		global $wgActorTableSchemaMigrationStage;
 
 		wfDeprecated( __METHOD__, '1.31' );
-		if ( $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH ) {
+		if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_NEW ) {
 			// If code is using this instead of self::getQueryInfo(), there's a
 			// decent chance it's going to try to directly access
 			// $row->img_user or $row->img_user_text and we can't give it
-			// useful values here once those aren't being written anymore.
+			// useful values here once those aren't being used anymore.
 			throw new BadMethodCallException(
-				'Cannot use ' . __METHOD__ . ' when $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH'
+				'Cannot use ' . __METHOD__
+					. ' when $wgActorTableSchemaMigrationStage has SCHEMA_COMPAT_READ_NEW'
 			);
 		}
 
@@ -223,10 +224,10 @@ class LocalFile extends File {
 			'img_minor_mime',
 			'img_user',
 			'img_user_text',
-			'img_actor' => $wgActorTableSchemaMigrationStage > MIGRATION_OLD ? 'img_actor' : null,
+			'img_actor' => 'NULL',
 			'img_timestamp',
 			'img_sha1',
-		] + CommentStore::getStore()->getFields( 'img_description' );
+		] + MediaWikiServices::getInstance()->getCommentStore()->getFields( 'img_description' );
 	}
 
 	/**
@@ -235,13 +236,13 @@ class LocalFile extends File {
 	 * @since 1.31
 	 * @param string[] $options
 	 *   - omit-lazy: Omit fields that are lazily cached.
-	 * @return array With three keys:
+	 * @return array[] With three keys:
 	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()`
 	 *   - fields: (string[]) to include in the `$vars` to `IDatabase->select()`
 	 *   - joins: (array) to include in the `$join_conds` to `IDatabase->select()`
 	 */
 	public static function getQueryInfo( array $options = [] ) {
-		$commentQuery = CommentStore::getStore()->getJoin( 'img_description' );
+		$commentQuery = MediaWikiServices::getInstance()->getCommentStore()->getJoin( 'img_description' );
 		$actorQuery = ActorMigration::newMigration()->getJoin( 'img_user' );
 		$ret = [
 			'tables' => [ 'image' ] + $commentQuery['tables'] + $actorQuery['tables'],
@@ -323,7 +324,7 @@ class LocalFile extends File {
 			return;
 		}
 
-		$cache = ObjectCache::getMainWANInstance();
+		$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
 		$cachedValues = $cache->getWithSetCallback(
 			$key,
 			$cache::TTL_WEEK,
@@ -388,7 +389,7 @@ class LocalFile extends File {
 
 		$this->repo->getMasterDB()->onTransactionPreCommitOrIdle(
 			function () use ( $key ) {
-				ObjectCache::getMainWANInstance()->delete( $key );
+				MediaWikiServices::getInstance()->getMainWANObjectCache()->delete( $key );
 			},
 			__METHOD__
 		);
@@ -405,7 +406,7 @@ class LocalFile extends File {
 	/**
 	 * Returns the list of object properties that are included as-is in the cache.
 	 * @param string $prefix Must be the empty string
-	 * @return array
+	 * @return string[]
 	 * @since 1.31 No longer accepts a non-empty $prefix
 	 */
 	protected function getCacheFields( $prefix = 'img_' ) {
@@ -427,7 +428,7 @@ class LocalFile extends File {
 	 * Returns the list of object properties that are included as-is in the
 	 * cache, only when they're not too big, and are lazily loaded by self::loadExtraFromDB().
 	 * @param string $prefix Must be the empty string
-	 * @return array
+	 * @return string[]
 	 * @since 1.31 No longer accepts a non-empty $prefix
 	 */
 	protected function getLazyCacheFields( $prefix = 'img_' ) {
@@ -500,7 +501,7 @@ class LocalFile extends File {
 	/**
 	 * @param IDatabase $dbr
 	 * @param string $fname
-	 * @return array|bool
+	 * @return string[]|bool
 	 */
 	private function loadExtraFieldsWithTimestamp( $dbr, $fname ) {
 		$fieldMap = false;
@@ -579,13 +580,13 @@ class LocalFile extends File {
 	function decodeRow( $row, $prefix = 'img_' ) {
 		$decoded = $this->unprefixRow( $row, $prefix );
 
-		$decoded['description'] = CommentStore::getStore()
+		$decoded['description'] = MediaWikiServices::getInstance()->getCommentStore()
 			->getComment( 'description', (object)$decoded )->text;
 
 		$decoded['user'] = User::newFromAnyId(
-			isset( $decoded['user'] ) ? $decoded['user'] : null,
-			isset( $decoded['user_text'] ) ? $decoded['user_text'] : null,
-			isset( $decoded['actor'] ) ? $decoded['actor'] : null
+			$decoded['user'] ?? null,
+			$decoded['user_text'] ?? null,
+			$decoded['actor'] ?? null
 		);
 		unset( $decoded['user_text'], $decoded['actor'] );
 
@@ -772,9 +773,9 @@ class LocalFile extends File {
 
 		if ( isset( $info['user'] ) || isset( $info['user_text'] ) || isset( $info['actor'] ) ) {
 			$this->user = User::newFromAnyId(
-				isset( $info['user'] ) ? $info['user'] : null,
-				isset( $info['user_text'] ) ? $info['user_text'] : null,
-				isset( $info['actor'] ) ? $info['actor'] : null
+				$info['user'] ?? null,
+				$info['user_text'] ?? null,
+				$info['actor'] ?? null
 			);
 		}
 
@@ -1160,9 +1161,9 @@ class LocalFile extends File {
 	/** purgeEverything inherited */
 
 	/**
-	 * @param int $limit Optional: Limit to number of results
-	 * @param int $start Optional: Timestamp, start from
-	 * @param int $end Optional: Timestamp, end at
+	 * @param int|null $limit Optional: Limit to number of results
+	 * @param string|int|null $start Optional: Timestamp, start from
+	 * @param string|int|null $end Optional: Timestamp, end at
 	 * @param bool $inc
 	 * @return OldLocalFile[]
 	 */
@@ -1300,11 +1301,14 @@ class LocalFile extends File {
 	 * @param User|null $user User object or null to use $wgUser
 	 * @param string[] $tags Change tags to add to the log entry and page revision.
 	 *   (This doesn't check $user's permissions.)
+	 * @param bool $createNullRevision Set to false to avoid creation of a null revision on file
+	 *   upload, see T193621
 	 * @return Status On success, the value member contains the
 	 *     archive name, or an empty string if it was a new file.
 	 */
 	function upload( $src, $comment, $pageText, $flags = 0, $props = false,
-		$timestamp = false, $user = null, $tags = []
+		$timestamp = false, $user = null, $tags = [],
+		$createNullRevision = true
 	) {
 		if ( $this->getRepo()->getReadOnlyReason() !== false ) {
 			return $this->readOnlyFatalStatus();
@@ -1321,7 +1325,7 @@ class LocalFile extends File {
 			) {
 				$props = $this->repo->getFileProps( $srcPath );
 			} else {
-				$mwProps = new MWFileProps( MediaWiki\MediaWikiServices::getInstance()->getMimeAnalyzer() );
+				$mwProps = new MWFileProps( MediaWikiServices::getInstance()->getMimeAnalyzer() );
 				$props = $mwProps->getPropsFromPath( $srcPath, true );
 			}
 		}
@@ -1361,7 +1365,8 @@ class LocalFile extends File {
 				$props,
 				$timestamp,
 				$user,
-				$tags
+				$tags,
+				$createNullRevision
 			);
 			if ( !$uploadStatus->isOK() ) {
 				if ( $uploadStatus->hasMessage( 'filenotfound' ) ) {
@@ -1419,10 +1424,13 @@ class LocalFile extends File {
 	 * @param string|bool $timestamp
 	 * @param null|User $user
 	 * @param string[] $tags
+	 * @param bool $createNullRevision Set to false to avoid creation of a null revision on file
+	 *   upload, see T193621
 	 * @return Status
 	 */
 	function recordUpload2(
-		$oldver, $comment, $pageText, $props = false, $timestamp = false, $user = null, $tags = []
+		$oldver, $comment, $pageText, $props = false, $timestamp = false, $user = null, $tags = [],
+		$createNullRevision = true
 	) {
 		global $wgCommentTableSchemaMigrationStage, $wgActorTableSchemaMigrationStage;
 
@@ -1462,9 +1470,8 @@ class LocalFile extends File {
 		# Test to see if the row exists using INSERT IGNORE
 		# This avoids race conditions by locking the row until the commit, and also
 		# doesn't deadlock. SELECT FOR UPDATE causes a deadlock for every race condition.
-		$commentStore = CommentStore::getStore();
-		list( $commentFields, $commentCallback ) =
-			$commentStore->insertWithTempTable( $dbw, 'img_description', $comment );
+		$commentStore = MediaWikiServices::getInstance()->getCommentStore();
+		$commentFields = $commentStore->insert( $dbw, 'img_description', $comment );
 		$actorMigration = ActorMigration::newMigration();
 		$actorFields = $actorMigration->getInsertValues( $dbw, 'img_user', $user );
 		$dbw->insert( 'image',
@@ -1536,7 +1543,8 @@ class LocalFile extends File {
 			}
 			if ( $wgCommentTableSchemaMigrationStage >= MIGRATION_WRITE_BOTH ) {
 				$tables[] = 'image_comment_temp';
-				$fields['oi_description_id'] = 'imgcomment_description_id';
+				$fields['oi_description_id'] = 'CASE WHEN img_description_id = 0 '
+					. 'THEN COALESCE(imgcomment_description_id, 0) ELSE img_description_id END';
 				$joins['image_comment_temp'] = [
 					$wgCommentTableSchemaMigrationStage === MIGRATION_NEW ? 'JOIN' : 'LEFT JOIN',
 					[ 'imgcomment_name = img_name' ]
@@ -1552,29 +1560,36 @@ class LocalFile extends File {
 				$res = $dbw->select(
 					[ 'image', 'image_comment_temp' ],
 					[ 'img_name', 'img_description' ],
-					[ 'img_name' => $this->getName(), 'imgcomment_name' => null ],
+					[
+						'img_name' => $this->getName(),
+						'imgcomment_name' => null,
+						'img_description_id' => 0,
+					],
 					__METHOD__,
 					[],
 					[ 'image_comment_temp' => [ 'LEFT JOIN', [ 'imgcomment_name = img_name' ] ] ]
 				);
 				foreach ( $res as $row ) {
-					list( , $callback ) = $commentStore->insertWithTempTable(
-						$dbw, 'img_description', $row->img_description
+					$imgFields = $commentStore->insert( $dbw, 'img_description', $row->img_description );
+					$dbw->update(
+						'image',
+						$imgFields,
+						[ 'img_name' => $row->img_name ],
+						__METHOD__
 					);
-					$callback( $row->img_name );
 				}
 			}
 
-			if ( $wgActorTableSchemaMigrationStage <= MIGRATION_WRITE_BOTH ) {
+			if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_WRITE_OLD ) {
 				$fields['oi_user'] = 'img_user';
 				$fields['oi_user_text'] = 'img_user_text';
 			}
-			if ( $wgActorTableSchemaMigrationStage >= MIGRATION_WRITE_BOTH ) {
+			if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_WRITE_NEW ) {
 				$fields['oi_actor'] = 'img_actor';
 			}
 
-			if ( $wgActorTableSchemaMigrationStage !== MIGRATION_OLD &&
-				$wgActorTableSchemaMigrationStage !== MIGRATION_NEW
+			if (
+				( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_WRITE_BOTH ) === SCHEMA_COMPAT_WRITE_BOTH
 			) {
 				// Upgrade any rows that are still old-style. Otherwise an upgrade
 				// might be missed if a deletion happens while the migration script
@@ -1623,11 +1638,10 @@ class LocalFile extends File {
 				__METHOD__
 			);
 			if ( $wgCommentTableSchemaMigrationStage > MIGRATION_OLD ) {
-				// So $commentCallback can insert the new row
+				// Clear deprecated table row
 				$dbw->delete( 'image_comment_temp', [ 'imgcomment_name' => $this->getName() ], __METHOD__ );
 			}
 		}
-		$commentCallback( $this->getName() );
 
 		$descTitle = $this->getTitle();
 		$descId = $descTitle->getArticleID();
@@ -1662,7 +1676,7 @@ class LocalFile extends File {
 			$formatter->setContext( RequestContext::newExtraneousContext( $descTitle ) );
 			$editSummary = $formatter->getPlainActionText();
 
-			$nullRevision = Revision::newNullRevision(
+			$nullRevision = $createNullRevision === false ? null : Revision::newNullRevision(
 				$dbw,
 				$descId,
 				$editSummary,
@@ -1689,6 +1703,7 @@ class LocalFile extends File {
 		# Defer purges, page creation, and link updates in case they error out.
 		# The most important thing is that files and the DB registry stay synced.
 		$dbw->endAtomic( __METHOD__ );
+		$fname = __METHOD__;
 
 		# Do some cache purges after final commit so that:
 		# a) Changes are more likely to be seen post-purge
@@ -1699,7 +1714,7 @@ class LocalFile extends File {
 				__METHOD__,
 				function () use (
 					$reupload, $wikiPage, $newPageContent, $comment, $user,
-					$logEntry, $logId, $descId, $tags
+					$logEntry, $logId, $descId, $tags, $fname
 				) {
 					# Update memcache after the commit
 					$this->invalidateCache();
@@ -1751,7 +1766,7 @@ class LocalFile extends File {
 						'logging',
 						$update,
 						[ 'log_id' => $logId ],
-						__METHOD__
+						$fname
 					);
 					$this->getRepo()->getMasterDB()->insert(
 						'log_search',
@@ -1760,7 +1775,7 @@ class LocalFile extends File {
 							'ls_value' => $logEntry->getAssociatedRevId(),
 							'ls_log_id' => $logId,
 						],
-						__METHOD__
+						$fname
 					);
 
 					# Add change tags, if any
@@ -2105,26 +2120,31 @@ class LocalFile extends File {
 	 * This is not used by ImagePage for local files, since (among other things)
 	 * it skips the parser cache.
 	 *
-	 * @param Language $lang What language to get description in (Optional)
-	 * @return bool|mixed
+	 * @param Language|null $lang What language to get description in (Optional)
+	 * @return string|false
 	 */
-	function getDescriptionText( $lang = null ) {
-		$revision = Revision::newFromTitle( $this->title, false, Revision::READ_NORMAL );
+	function getDescriptionText( Language $lang = null ) {
+		$store = MediaWikiServices::getInstance()->getRevisionStore();
+		$revision = $store->getRevisionByTitle( $this->title, 0, Revision::READ_NORMAL );
 		if ( !$revision ) {
 			return false;
 		}
-		$content = $revision->getContent();
-		if ( !$content ) {
+
+		$renderer = MediaWikiServices::getInstance()->getRevisionRenderer();
+		$rendered = $renderer->getRenderedRevision( $revision, new ParserOptions( null, $lang ) );
+
+		if ( !$rendered ) {
+			// audience check failed
 			return false;
 		}
-		$pout = $content->getParserOutput( $this->title, null, new ParserOptions( null, $lang ) );
 
+		$pout = $rendered->getRevisionParserOutput();
 		return $pout->getText();
 	}
 
 	/**
 	 * @param int $audience
-	 * @param User $user
+	 * @param User|null $user
 	 * @return string
 	 */
 	function getDescription( $audience = self::FOR_PUBLIC, User $user = null ) {
@@ -2201,7 +2221,7 @@ class LocalFile extends File {
 
 		// If extra data (metadata) was not loaded then it must have been large
 		return $this->extraDataLoaded
-		&& strlen( serialize( $this->metadata ) ) <= self::CACHE_FIELD_MAX_LEN;
+			&& strlen( serialize( $this->metadata ) ) <= self::CACHE_FIELD_MAX_LEN;
 	}
 
 	/**
@@ -2209,9 +2229,9 @@ class LocalFile extends File {
 	 * @since 1.28
 	 */
 	public function acquireFileLock() {
-		return $this->getRepo()->getBackend()->lockFiles(
+		return Status::wrap( $this->getRepo()->getBackend()->lockFiles(
 			[ $this->getPath() ], LockManager::LOCK_EX, 10
-		);
+		) );
 	}
 
 	/**
@@ -2219,9 +2239,9 @@ class LocalFile extends File {
 	 * @since 1.28
 	 */
 	public function releaseFileLock() {
-		return $this->getRepo()->getBackend()->unlockFiles(
+		return Status::wrap( $this->getRepo()->getBackend()->unlockFiles(
 			[ $this->getPath() ], LockManager::LOCK_EX
-		);
+		) );
 	}
 
 	/**
@@ -2369,7 +2389,7 @@ class LocalFileDeleteBatch {
 
 	/**
 	 * Add the old versions of the image to the batch
-	 * @return array List of archive names from old versions
+	 * @return string[] List of archive names from old versions
 	 */
 	public function addOlds() {
 		$archiveNames = [];
@@ -2470,7 +2490,7 @@ class LocalFileDeleteBatch {
 		$now = time();
 		$dbw = $this->file->repo->getMasterDB();
 
-		$commentStore = CommentStore::getStore();
+		$commentStore = MediaWikiServices::getInstance()->getCommentStore();
 		$actorMigration = ActorMigration::newMigration();
 
 		$encTimestamp = $dbw->addQuotes( $dbw->timestamp( $now ) );
@@ -2525,7 +2545,8 @@ class LocalFileDeleteBatch {
 			}
 			if ( $wgCommentTableSchemaMigrationStage >= MIGRATION_WRITE_BOTH ) {
 				$tables[] = 'image_comment_temp';
-				$fields['fa_description_id'] = 'imgcomment_description_id';
+				$fields['fa_description_id'] = 'CASE WHEN img_description_id = 0 '
+					. 'THEN COALESCE(imgcomment_description_id, 0) ELSE img_description_id END';
 				$joins['image_comment_temp'] = [
 					$wgCommentTableSchemaMigrationStage === MIGRATION_NEW ? 'JOIN' : 'LEFT JOIN',
 					[ 'imgcomment_name = img_name' ]
@@ -2541,29 +2562,36 @@ class LocalFileDeleteBatch {
 				$res = $dbw->select(
 					[ 'image', 'image_comment_temp' ],
 					[ 'img_name', 'img_description' ],
-					[ 'img_name' => $this->file->getName(), 'imgcomment_name' => null ],
+					[
+						'img_name' => $this->file->getName(),
+						'imgcomment_name' => null,
+						'img_description_id' => 0,
+					],
 					__METHOD__,
 					[],
 					[ 'image_comment_temp' => [ 'LEFT JOIN', [ 'imgcomment_name = img_name' ] ] ]
 				);
 				foreach ( $res as $row ) {
-					list( , $callback ) = $commentStore->insertWithTempTable(
-						$dbw, 'img_description', $row->img_description
+					$imgFields = $commentStore->insert( $dbw, 'img_description', $row->img_description );
+					$dbw->update(
+						'image',
+						$imgFields,
+						[ 'img_name' => $row->img_name ],
+						__METHOD__
 					);
-					$callback( $row->img_name );
 				}
 			}
 
-			if ( $wgActorTableSchemaMigrationStage <= MIGRATION_WRITE_BOTH ) {
+			if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_WRITE_OLD ) {
 				$fields['fa_user'] = 'img_user';
 				$fields['fa_user_text'] = 'img_user_text';
 			}
-			if ( $wgActorTableSchemaMigrationStage >= MIGRATION_WRITE_BOTH ) {
+			if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_WRITE_NEW ) {
 				$fields['fa_actor'] = 'img_actor';
 			}
 
-			if ( $wgActorTableSchemaMigrationStage !== MIGRATION_OLD &&
-				$wgActorTableSchemaMigrationStage !== MIGRATION_NEW
+			if (
+				( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_WRITE_BOTH ) === SCHEMA_COMPAT_WRITE_BOTH
 			) {
 				// Upgrade any rows that are still old-style. Otherwise an upgrade
 				// might be missed if a deletion happens while the migration script
@@ -2657,6 +2685,7 @@ class LocalFileDeleteBatch {
 		if ( $deleteCurrent ) {
 			$dbw->delete( 'image', [ 'img_name' => $this->file->getName() ], __METHOD__ );
 			if ( $wgCommentTableSchemaMigrationStage > MIGRATION_OLD ) {
+				// Clear deprecated table row
 				$dbw->delete(
 					'image_comment_temp', [ 'imgcomment_name' => $this->file->getName() ], __METHOD__
 				);
@@ -2762,10 +2791,10 @@ class LocalFileRestoreBatch {
 	/** @var LocalFile */
 	private $file;
 
-	/** @var array List of file IDs to restore */
+	/** @var string[] List of file IDs to restore */
 	private $cleanupBatch;
 
-	/** @var array List of file IDs to restore */
+	/** @var string[] List of file IDs to restore */
 	private $ids;
 
 	/** @var bool Add all revisions of the file */
@@ -2780,7 +2809,7 @@ class LocalFileRestoreBatch {
 	 */
 	function __construct( File $file, $unsuppress = false ) {
 		$this->file = $file;
-		$this->cleanupBatch = $this->ids = [];
+		$this->cleanupBatch = [];
 		$this->ids = [];
 		$this->unsuppress = $unsuppress;
 	}
@@ -2830,7 +2859,7 @@ class LocalFileRestoreBatch {
 
 		$dbw = $this->file->repo->getMasterDB();
 
-		$commentStore = CommentStore::getStore();
+		$commentStore = MediaWikiServices::getInstance()->getCommentStore();
 		$actorMigration = ActorMigration::newMigration();
 
 		$status = $this->file->repo->newGood();
@@ -2924,8 +2953,7 @@ class LocalFileRestoreBatch {
 			if ( $first && !$exists ) {
 				// This revision will be published as the new current version
 				$destRel = $this->file->getRel();
-				list( $commentFields, $commentCallback ) =
-					$commentStore->insertWithTempTable( $dbw, 'img_description', $comment );
+				$commentFields = $commentStore->insert( $dbw, 'img_description', $comment );
 				$actorFields = $actorMigration->getInsertValues( $dbw, 'img_user', $user );
 				$insertCurrent = [
 					'img_name' => $row->fa_name,
@@ -3037,7 +3065,6 @@ class LocalFileRestoreBatch {
 		// This is not ideal, which is why it's important to lock the image row.
 		if ( $insertCurrent ) {
 			$dbw->insert( 'image', $insertCurrent, __METHOD__ );
-			$commentCallback( $insertCurrent['img_name'] );
 		}
 
 		if ( $insertBatch ) {
@@ -3097,8 +3124,8 @@ class LocalFileRestoreBatch {
 
 	/**
 	 * Removes non-existent files from a cleanup batch.
-	 * @param array $batch
-	 * @return array
+	 * @param string[] $batch
+	 * @return string[]
 	 */
 	protected function removeNonexistentFromCleanup( $batch ) {
 		$files = $newBatch = [];
@@ -3139,10 +3166,10 @@ class LocalFileRestoreBatch {
 
 	/**
 	 * Cleanup a failed batch. The batch was only partially successful, so
-	 * rollback by removing all items that were succesfully copied.
+	 * rollback by removing all items that were successfully copied.
 	 *
 	 * @param Status $storeStatus
-	 * @param array $storeBatch
+	 * @param array[] $storeBatch
 	 */
 	protected function cleanupFailedBatch( $storeStatus, $storeBatch ) {
 		$cleanupBatch = [];
@@ -3208,7 +3235,7 @@ class LocalFileMoveBatch {
 
 	/**
 	 * Add the old versions of the image to the batch
-	 * @return array List of archive names from old versions
+	 * @return string[] List of archive names from old versions
 	 */
 	public function addOlds() {
 		$archiveBase = 'archive';
@@ -3337,19 +3364,15 @@ class LocalFileMoveBatch {
 		$status = $repo->newGood();
 		$dbw = $this->db;
 
-		$hasCurrent = $dbw->selectField(
+		$hasCurrent = $dbw->lockForUpdate(
 			'image',
-			'1',
 			[ 'img_name' => $this->oldName ],
-			__METHOD__,
-			[ 'FOR UPDATE' ]
+			__METHOD__
 		);
-		$oldRowCount = $dbw->selectField(
+		$oldRowCount = $dbw->lockForUpdate(
 			'oldimage',
-			'COUNT(*)',
 			[ 'oi_name' => $this->oldName ],
-			__METHOD__,
-			[ 'FOR UPDATE' ]
+			__METHOD__
 		);
 
 		if ( $hasCurrent ) {
@@ -3374,6 +3397,8 @@ class LocalFileMoveBatch {
 	 * many rows where updated.
 	 */
 	protected function doDBUpdates() {
+		global $wgCommentTableSchemaMigrationStage;
+
 		$dbw = $this->db;
 
 		// Update current image
@@ -3383,6 +3408,15 @@ class LocalFileMoveBatch {
 			[ 'img_name' => $this->oldName ],
 			__METHOD__
 		);
+		if ( $wgCommentTableSchemaMigrationStage > MIGRATION_OLD ) {
+			$dbw->update(
+				'image_comment_temp',
+				[ 'imgcomment_name' => $this->newName ],
+				[ 'imgcomment_name' => $this->oldName ],
+				__METHOD__
+			);
+		}
+
 		// Update old images
 		$dbw->update(
 			'oldimage',
@@ -3398,7 +3432,7 @@ class LocalFileMoveBatch {
 
 	/**
 	 * Generate triplets for FileRepo::storeBatch().
-	 * @return array
+	 * @return array[]
 	 */
 	protected function getMoveTriplets() {
 		$moves = array_merge( [ $this->cur ], $this->olds );
@@ -3450,7 +3484,7 @@ class LocalFileMoveBatch {
 	/**
 	 * Cleanup a partially moved array of triplets by deleting the target
 	 * files. Called if something went wrong half way.
-	 * @param array $triplets
+	 * @param array[] $triplets
 	 */
 	protected function cleanupTarget( $triplets ) {
 		// Create dest pairs from the triplets
@@ -3466,7 +3500,7 @@ class LocalFileMoveBatch {
 	/**
 	 * Cleanup a fully moved array of triplets by deleting the source files.
 	 * Called at the end of the move process if everything else went ok.
-	 * @param array $triplets
+	 * @param array[] $triplets
 	 */
 	protected function cleanupSource( $triplets ) {
 		// Create source file names from the triplets

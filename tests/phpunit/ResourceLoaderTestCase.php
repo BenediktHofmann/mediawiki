@@ -31,12 +31,14 @@ abstract class ResourceLoaderTestCase extends MediaWikiTestCase {
 			'skin' => 'vector',
 			'modules' => 'startup',
 			'only' => 'scripts',
+			'safemode' => null,
 		];
 		$resourceLoader = $rl ?: new ResourceLoader();
 		$request = new FauxRequest( [
 				'lang' => $options['lang'],
 				'modules' => $options['modules'],
 				'only' => $options['only'],
+				'safemode' => $options['safemode'],
 				'skin' => $options['skin'],
 				'target' => 'phpunit',
 		] );
@@ -61,7 +63,6 @@ abstract class ResourceLoaderTestCase extends MediaWikiTestCase {
 
 			// For wfScript()
 			'ScriptPath' => '/w',
-			'ScriptExtension' => '.php',
 			'Script' => '/w/index.php',
 			'LoadScript' => '/w/load.php',
 		];
@@ -142,7 +143,7 @@ class ResourceLoaderTestModule extends ResourceLoaderModule {
 	}
 
 	public function shouldEmbedModule( ResourceLoaderContext $context ) {
-		return $this->shouldEmbed !== null ? $this->shouldEmbed : parent::shouldEmbedModule( $context );
+		return $this->shouldEmbed ?? parent::shouldEmbedModule( $context );
 	}
 
 	public function enableModuleContentVersion() {

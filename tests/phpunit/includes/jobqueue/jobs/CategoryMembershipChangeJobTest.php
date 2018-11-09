@@ -6,7 +6,7 @@
  * @group JobQueue
  * @group Database
  *
- * @licence GNU GPL v2+
+ * @license GPL-2.0-or-later
  * @author Addshore
  */
 class CategoryMembershipChangeJobTest extends MediaWikiTestCase {

@@ -65,12 +65,10 @@ class InterwikiSearchResultSetWidget implements SearchResultSetWidget {
 
 		$iwResults = [];
 		foreach ( $resultSets as $resultSet ) {
-			$result = $resultSet->next();
-			while ( $result ) {
+			foreach ( $resultSet as $result ) {
 				if ( !$result->isBrokenTitle() ) {
 					$iwResults[$result->getTitle()->getInterwiki()][] = $result;
 				}
-				$result = $resultSet->next();
 			}
 		}
 
@@ -130,11 +128,8 @@ class InterwikiSearchResultSetWidget implements SearchResultSetWidget {
 		$interwiki = $this->iwLookup->fetch( $iwPrefix );
 		$parsed = wfParseUrl( wfExpandUrl( $interwiki ? $interwiki->getURL() : '/' ) );
 
-		if ( isset( $this->customCaptions[$iwPrefix] ) ) {
-			$caption = $this->customCaptions[$iwPrefix];
-		} else {
-			$caption = $this->specialSearch->msg( 'search-interwiki-default', $parsed['host'] )->escaped();
-		}
+		$caption = $this->customCaptions[$iwPrefix] ??
+			$this->specialSearch->msg( 'search-interwiki-default', $parsed['host'] )->escaped();
 
 		$searchLink = Html::rawElement( 'em', null,
 			Html::rawElement( 'a', [ 'href' => $href, 'target' => '_blank' ], $caption )

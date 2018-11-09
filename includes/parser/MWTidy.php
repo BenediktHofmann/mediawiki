@@ -53,27 +53,6 @@ class MWTidy {
 	}
 
 	/**
-	 * Check HTML for errors, used if $wgValidateAllHtml = true.
-	 *
-	 * @param string $text
-	 * @param string &$errorStr Return the error string
-	 * @return bool Whether the HTML is valid
-	 * @throws MWException
-	 */
-	public static function checkErrors( $text, &$errorStr = null ) {
-		$driver = self::singleton();
-		if ( !$driver ) {
-			throw new MWException( __METHOD__ .
-				': tidy is disabled, caller should have checked MWTidy::isEnabled()' );
-		}
-		if ( $driver->supportsValidate() ) {
-			return $driver->validate( $text, $errorStr );
-		} else {
-			throw new MWException( __METHOD__ . ": error text return from HHVM tidy is not supported" );
-		}
-	}
-
-	/**
 	 * @return bool
 	 */
 	public static function isEnabled() {
@@ -92,6 +71,7 @@ class MWTidy {
 				$config = $wgTidyConfig;
 			} elseif ( $wgUseTidy ) {
 				// b/c configuration
+				wfDeprecated( '$wgUseTidy', '1.26' );
 				$config = [
 					'tidyConfigFile' => $wgTidyConf,
 					'debugComment' => $wgDebugTidy,
@@ -107,6 +87,7 @@ class MWTidy {
 					$config['driver'] = 'RaggettExternal';
 				}
 			} else {
+				wfDeprecated( '$wgTidyConfig = null and $wgUseTidy = false', '1.26' );
 				return false;
 			}
 			self::$instance = self::factory( $config );
@@ -132,16 +113,11 @@ class MWTidy {
 			case 'RaggettExternal':
 				$instance = new MediaWiki\Tidy\RaggettExternal( $config );
 				break;
-			case 'Html5Depurate':
-				$instance = new MediaWiki\Tidy\Html5Depurate( $config );
-				break;
-			case 'Html5Internal':
-				$instance = new MediaWiki\Tidy\Html5Internal( $config );
-				break;
 			case 'RemexHtml':
 				$instance = new MediaWiki\Tidy\RemexDriver( $config );
 				break;
 			case 'disabled':
+				wfDeprecated( '"disabled" tidy driver', '1.32' );
 				return false;
 			default:
 				throw new MWException( "Invalid tidy driver: \"{$config['driver']}\"" );

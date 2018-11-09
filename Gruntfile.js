@@ -4,7 +4,6 @@ module.exports = function ( grunt ) {
 
 	var wgServer = process.env.MW_SERVER,
 		wgScriptPath = process.env.MW_SCRIPT_PATH,
-		WebdriverIOconfigFile,
 		karmaProxy = {};
 
 	grunt.loadNpmTasks( 'grunt-banana-checker' );
@@ -14,18 +13,11 @@ module.exports = function ( grunt ) {
 	grunt.loadNpmTasks( 'grunt-jsonlint' );
 	grunt.loadNpmTasks( 'grunt-karma' );
 	grunt.loadNpmTasks( 'grunt-stylelint' );
-	grunt.loadNpmTasks( 'grunt-webdriver' );
 
 	karmaProxy[ wgScriptPath ] = {
 		target: wgServer + wgScriptPath,
 		changeOrigin: true
 	};
-
-	if ( process.env.JENKINS_HOME ) {
-		WebdriverIOconfigFile = './tests/selenium/wdio.conf.jenkins.js';
-	} else {
-		WebdriverIOconfigFile = './tests/selenium/wdio.conf.js';
-	}
 
 	grunt.initConfig( {
 		eslint: {
@@ -35,16 +27,13 @@ module.exports = function ( grunt ) {
 				'!node_modules/**',
 				'!resources/lib/**',
 				'!resources/src/jquery.tipsy/**',
-				'!resources/src/jquery/jquery.farbtastic.js',
-				'!resources/src/mediawiki.libs/**',
+				'!resources/src/mediawiki.libs.jpegmeta/**',
 				// Third-party code of PHPUnit coverage report
 				'!tests/coverage/**',
 				'!vendor/**',
 				// Explicitly say "**/*.js" here in case of symlinks
 				'!extensions/**/*.js',
-				'!skins/**/*.js',
-				// Skip functions aren't even parseable
-				'!resources/src/mediawiki.hidpi-skip.js'
+				'!skins/**/*.js'
 			]
 		},
 		jsonlint: {
@@ -111,15 +100,7 @@ module.exports = function ( grunt ) {
 					return require( 'path' ).join( dest, src.replace( 'resources/', '' ) );
 				}
 			}
-		},
-
-		// Configure WebdriverIO task
-		webdriver: {
-			test: {
-				configFile: WebdriverIOconfigFile
-			}
 		}
-
 	} );
 
 	grunt.registerTask( 'assert-mw-env', function () {

@@ -63,12 +63,8 @@ class ResourceLoaderContext implements MessageLocalizer {
 		$this->request = $request;
 		$this->logger = $resourceLoader->getLogger();
 
-		// Future developers: Avoid use of getVal() in this class, which performs
-		// expensive UTF normalisation by default. Use getRawVal() instead.
-		// Values here are either one of a finite number of internal IDs,
-		// or previously-stored user input (e.g. titles, user names) that were passed
-		// to this endpoint by ResourceLoader itself from the canonical value.
-		// Values do not come directly from user input and need not match.
+		// Future developers: Use WebRequest::getRawVal() instead getVal().
+		// The getVal() method performs slow Language+UTF logic. (f303bb9360)
 
 		// List of modules
 		$modules = $request->getRawVal( 'modules' );
@@ -230,7 +226,7 @@ class ResourceLoaderContext implements MessageLocalizer {
 	 * @return Message
 	 */
 	public function msg( $key ) {
-		return call_user_func_array( 'wfMessage', func_get_args() )
+		return wfMessage( ...func_get_args() )
 			->inLanguage( $this->getLanguage() )
 			// Use a dummy title because there is no real title
 			// for this endpoint, and the cache won't vary on it
@@ -343,6 +339,22 @@ class ResourceLoaderContext implements MessageLocalizer {
 		}
 
 		return $this->imageObj;
+	}
+
+	/**
+	 * Return the replaced-content mapping callback
+	 *
+	 * When editing a page that's used to generate the scripts or styles of a
+	 * ResourceLoaderWikiModule, a preview should use the to-be-saved version of
+	 * the page rather than the current version in the database. A context
+	 * supporting such previews should return a callback to return these
+	 * mappings here.
+	 *
+	 * @since 1.32
+	 * @return callable|null Signature is `Content|null func( Title $t )`
+	 */
+	public function getContentOverrideCallback() {
+		return null;
 	}
 
 	/**

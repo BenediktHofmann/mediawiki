@@ -74,7 +74,7 @@ class ForeignAPIRepo extends FileRepo {
 		parent::__construct( $info );
 
 		// https://commons.wikimedia.org/w/api.php
-		$this->mApiBase = isset( $info['apibase'] ) ? $info['apibase'] : null;
+		$this->mApiBase = $info['apibase'] ?? null;
 
 		if ( isset( $info['apiThumbCacheExpiry'] ) ) {
 			$this->apiThumbCacheExpiry = $info['apiThumbCacheExpiry'];
@@ -120,7 +120,7 @@ class ForeignAPIRepo extends FileRepo {
 	}
 
 	/**
-	 * @param array $files
+	 * @param string[] $files
 	 * @return array
 	 */
 	function fileExistsBatch( array $files ) {
@@ -176,7 +176,7 @@ class ForeignAPIRepo extends FileRepo {
 
 	/**
 	 * @param string $virtualUrl
-	 * @return bool
+	 * @return false
 	 */
 	function getFileProps( $virtualUrl ) {
 		return false;
@@ -231,7 +231,7 @@ class ForeignAPIRepo extends FileRepo {
 
 	/**
 	 * @param string $hash
-	 * @return array
+	 * @return ForeignAPIFile[]
 	 */
 	function findBySha1( $hash ) {
 		$results = $this->fetchImageQuery( [
@@ -257,10 +257,10 @@ class ForeignAPIRepo extends FileRepo {
 	 * @param string $name
 	 * @param int $width
 	 * @param int $height
-	 * @param array &$result
+	 * @param array|null &$result Output-only parameter, guaranteed to become an array
 	 * @param string $otherParams
 	 *
-	 * @return bool
+	 * @return string|false
 	 */
 	function getThumbUrl( $name, $width = -1, $height = -1, &$result = null, $otherParams = '' ) {
 		$data = $this->fetchImageQuery( [
@@ -287,7 +287,7 @@ class ForeignAPIRepo extends FileRepo {
 	 * @param int $width
 	 * @param int $height
 	 * @param string $otherParams
-	 * @param string $lang Language code for language of error
+	 * @param string|null $lang Language code for language of error
 	 * @return bool|MediaTransformError
 	 * @since 1.22
 	 */
@@ -332,7 +332,6 @@ class ForeignAPIRepo extends FileRepo {
 	 * @return bool|string
 	 */
 	function getThumbUrlFromCache( $name, $width, $height, $params = "" ) {
-		$cache = ObjectCache::getMainWANInstance();
 		// We can't check the local cache using FileRepo functions because
 		// we override fileExistsBatch(). We have to use the FileBackend directly.
 		$backend = $this->getBackend(); // convenience
@@ -345,7 +344,7 @@ class ForeignAPIRepo extends FileRepo {
 		$sizekey = "$width:$height:$params";
 
 		/* Get the array of urls that we already know */
-		$knownThumbUrls = $cache->get( $key );
+		$knownThumbUrls = $this->wanCache->get( $key );
 		if ( !$knownThumbUrls ) {
 			/* No knownThumbUrls for this file */
 			$knownThumbUrls = [];
@@ -391,7 +390,7 @@ class ForeignAPIRepo extends FileRepo {
 			if ( $remoteModified < $modified && $diff < $this->fileCacheExpiry ) {
 				/* Use our current and already downloaded thumbnail */
 				$knownThumbUrls[$sizekey] = $localUrl;
-				$cache->set( $key, $knownThumbUrls, $this->apiThumbCacheExpiry );
+				$this->wanCache->set( $key, $knownThumbUrls, $this->apiThumbCacheExpiry );
 
 				return $localUrl;
 			}
@@ -416,9 +415,9 @@ class ForeignAPIRepo extends FileRepo {
 		$knownThumbUrls[$sizekey] = $localUrl;
 
 		$ttl = $mtime
-			? $cache->adaptiveTTL( $mtime, $this->apiThumbCacheExpiry )
+			? $this->wanCache->adaptiveTTL( $mtime, $this->apiThumbCacheExpiry )
 			: $this->apiThumbCacheExpiry;
-		$cache->set( $key, $knownThumbUrls, $ttl );
+		$this->wanCache->set( $key, $knownThumbUrls, $ttl );
 		wfDebug( __METHOD__ . " got local thumb $localUrl, saving to cache \n" );
 
 		return $localUrl;
@@ -569,22 +568,21 @@ class ForeignAPIRepo extends FileRepo {
 			$url = $this->makeUrl( $query, 'api' );
 		}
 
-		$cache = ObjectCache::getMainWANInstance();
-		return $cache->getWithSetCallback(
+		return $this->wanCache->getWithSetCallback(
 			$this->getLocalCacheKey( static::class, $target, md5( $url ) ),
 			$cacheTTL,
-			function ( $curValue, &$ttl ) use ( $url, $cache ) {
+			function ( $curValue, &$ttl ) use ( $url ) {
 				$html = self::httpGet( $url, 'default', [], $mtime );
 				if ( $html !== false ) {
-					$ttl = $mtime ? $cache->adaptiveTTL( $mtime, $ttl ) : $ttl;
+					$ttl = $mtime ? $this->wanCache->adaptiveTTL( $mtime, $ttl ) : $ttl;
 				} else {
-					$ttl = $cache->adaptiveTTL( $mtime, $ttl );
+					$ttl = $this->wanCache->adaptiveTTL( $mtime, $ttl );
 					$html = null; // caches negatives
 				}
 
 				return $html;
 			},
-			[ 'pcTTL' => $cache::TTL_PROC_LONG ]
+			[ 'pcTTL' => WANObjectCache::TTL_PROC_LONG ]
 		);
 	}
 

@@ -86,17 +86,14 @@ class ImagePage extends Article {
 		$this->repo = $img->getRepo();
 	}
 
-	/**
-	 * Handler for action=render
-	 * Include body text only; none of the image extras
-	 */
-	public function render() {
-		$this->getContext()->getOutput()->setArticleBodyOnly( true );
-		parent::view();
-	}
-
 	public function view() {
 		global $wgShowEXIF;
+
+		// For action=render, include body text only; none of the image extras
+		if ( $this->viewIsRenderAction ) {
+			parent::view();
+			return;
+		}
 
 		$out = $this->getContext()->getOutput();
 		$request = $this->getContext()->getRequest();
@@ -161,7 +158,7 @@ class ImagePage extends Article {
 		if ( $this->mExtraDescription ) {
 			$fol = $this->getContext()->msg( 'shareddescriptionfollows' );
 			if ( !$fol->isDisabled() ) {
-				$out->addWikiText( $fol->plain() );
+				$out->addWikiTextAsInterface( $fol->plain() );
 			}
 			$out->addHTML( '<div id="shared-image-desc">' . $this->mExtraDescription . "</div>\n" );
 		}
@@ -190,7 +187,10 @@ class ImagePage extends Article {
 				'h2',
 				[ 'id' => 'metadata' ],
 					$this->getContext()->msg( 'metadata' )->text() ) . "\n" );
-			$out->addWikiText( $this->makeMetadataTable( $formattedMetadata ) );
+			$out->wrapWikiTextAsInterface(
+				'mw-imagepage-section-metadata',
+				$this->makeMetadataTable( $formattedMetadata )
+			);
 			$out->addModules( [ 'mediawiki.action.view.metadata' ] );
 		}
 
@@ -249,8 +249,7 @@ class ImagePage extends Article {
 	 * @return string The metadata table. This is treated as Wikitext (!)
 	 */
 	protected function makeMetadataTable( $metadata ) {
-		$r = "<div class=\"mw-imagepage-section-metadata\">";
-		$r .= $this->getContext()->msg( 'metadata-help' )->plain();
+		$r = $this->getContext()->msg( 'metadata-help' )->plain();
 		// Intial state is collapsed
 		// see filepage.css and mediawiki.action.view.metadata module.
 		$r .= "<table id=\"mw_metadata\" class=\"mw_metadata collapsed\">\n";
@@ -267,23 +266,25 @@ class ImagePage extends Article {
 				);
 			}
 		}
-		$r .= "</table>\n</div>\n";
+		$r .= "</table>\n";
 		return $r;
 	}
 
 	/**
-	 * Overloading Article's getContentObject method.
+	 * Overloading Article's getEmptyPageParserOutput method.
 	 *
 	 * Omit noarticletext if sharedupload; text will be fetched from the
 	 * shared upload server if possible.
-	 * @return string
+	 *
+	 * @param ParserOptions $options
+	 * @return ParserOutput
 	 */
-	public function getContentObject() {
+	public function getEmptyPageParserOutput( ParserOptions $options ) {
 		$this->loadFile();
 		if ( $this->mPage->getFile() && !$this->mPage->getFile()->isLocal() && 0 == $this->getId() ) {
-			return null;
+			return new ParserOutput();
 		}
-		return parent::getContentObject();
+		return parent::getEmptyPageParserOutput( $options );
 	}
 
 	private function getLanguageForRendering( WebRequest $request, File $file ) {
@@ -440,7 +441,7 @@ class ImagePage extends Article {
 						// in the mediawiki.page.image.pagination module
 						$link = Linker::linkKnown(
 							$this->getTitle(),
-							$label,
+							htmlspecialchars( $label ),
 							[],
 							[ 'page' => $page - 1 ]
 						);
@@ -460,7 +461,7 @@ class ImagePage extends Article {
 						$label = $this->getContext()->msg( 'imgmultipagenext' )->text();
 						$link = Linker::linkKnown(
 							$this->getTitle(),
-							$label,
+							htmlspecialchars( $label ),
 							[],
 							[ 'page' => $page + 1 ]
 						);
@@ -540,16 +541,15 @@ class ImagePage extends Article {
 				// to the filename, because it can get copied with it.
 				// See T27277.
 				// phpcs:disable Generic.Files.LineLength
-				$out->addWikiText( <<<EOT
-<div class="fullMedia"><span class="dangerousLink">{$medialink}</span> $dirmark<span class="fileInfo">$longDesc</span></div>
-<div class="mediaWarning">$warning</div>
+				$out->wrapWikiTextAsInterface( 'fullMedia', <<<EOT
+<span class="dangerousLink">{$medialink}</span> $dirmark<span class="fileInfo">$longDesc</span>
 EOT
 				);
 				// phpcs:enable
+				$out->wrapWikiTextAsInterface( 'mediaWarning', $warning );
 			} else {
-				$out->addWikiText( <<<EOT
-<div class="fullMedia">{$medialink} {$dirmark}<span class="fileInfo">$longDesc</span>
-</div>
+				$out->wrapWikiTextAsInterface( 'fullMedia', <<<EOT
+{$medialink} {$dirmark}<span class="fileInfo">$longDesc</span>
 EOT
 				);
 			}
@@ -572,10 +572,7 @@ EOT
 					'file-no-thumb-animation'
 				)->plain();
 
-				$out->addWikiText( <<<EOT
-<div class="mw-noanimatethumb">{$noAnimMesg}</div>
-EOT
-				);
+				$out->wrapWikiTextAsInterface( 'mw-noanimatethumb', $noAnimMesg );
 			}
 
 			if ( !$this->displayImg->isLocal() ) {
@@ -1003,7 +1000,7 @@ EOT
 		$out->setRobotPolicy( 'noindex,nofollow' );
 		$out->setArticleRelated( false );
 		$out->enableClientCache( false );
-		$out->addWikiText( $description );
+		$out->addWikiTextAsInterface( $description );
 	}
 
 	/**
@@ -1015,11 +1012,8 @@ EOT
 	 * @return int Result of string comparison, or namespace comparison
 	 */
 	protected function compare( $a, $b ) {
-		if ( $a->page_namespace == $b->page_namespace ) {
-			return strcmp( $a->page_title, $b->page_title );
-		} else {
-			return $a->page_namespace - $b->page_namespace;
-		}
+		return $a->page_namespace <=> $b->page_namespace
+			?: strcmp( $a->page_title, $b->page_title );
 	}
 
 	/**
@@ -1039,15 +1033,14 @@ EOT
 		}
 
 		// The user offset might still be incorrect, specially if
-		// $wgImageLimits got changed (see bug #8858).
+		// $wgImageLimits got changed (see T10858).
 		if ( !isset( $wgImageLimits[$option] ) ) {
 			// Default to the first offset in $wgImageLimits
 			$option = 0;
 		}
 
-		return isset( $wgImageLimits[$option] )
-			? $wgImageLimits[$option]
-			: [ 800, 600 ]; // if nothing is set, fallback to a hardcoded default
+		// if nothing is set, fallback to a hardcoded default
+		return $wgImageLimits[$option] ?? [ 800, 600 ];
 	}
 
 	/**

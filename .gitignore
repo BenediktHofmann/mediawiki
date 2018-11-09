@@ -20,6 +20,8 @@ project.index
 ## Sublime
 sublime-*
 sftp-config.json
+## Visual Studio Code
+*.vscode/
 
 # MediaWiki install & usage
 /cache
@@ -43,12 +45,12 @@ sftp-config.json
 /maintenance/dev/data
 /AdminSettings.php
 /LocalSettings.php
-/StartProfiler.php
 
 # Building & testing
 npm-debug.log
 node_modules/
 /tests/phpunit/phpunit.phar
+/tests/selenium/log
 
 # Composer
 /vendor
@@ -79,5 +81,13 @@ Thumbs.db
 /tests/phan/issues
 *.rej
 
-#bluespice
+#bluespice free
+/images/bluespice
 /settings.d/*.local.php
+LocalSettings.local.php
+BLUESPICE-INSTALL
+BLUESPICE-LICENCE
+BLUESPICE-RELEASE-HISTORY
+BLUESPICE-RELEASE-NOTES
+dynamic_file.php
+installcheck.php

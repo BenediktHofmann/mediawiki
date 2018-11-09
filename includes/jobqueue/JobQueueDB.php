@@ -55,7 +55,7 @@ class JobQueueDB extends JobQueue {
 	protected function __construct( array $params ) {
 		parent::__construct( $params );
 
-		$this->cluster = isset( $params['cluster'] ) ? $params['cluster'] : false;
+		$this->cluster = $params['cluster'] ?? false;
 		$this->cache = ObjectCache::getMainWANInstance();
 	}
 
@@ -190,13 +190,13 @@ class JobQueueDB extends JobQueue {
 		// If the connection is busy with a transaction, then defer the job writes
 		// until right before the main round commit step. Any errors that bubble
 		// up will rollback the main commit round.
-		// b) mysql/postgres; DB connection is generally a separate CONN_TRX_AUTO handle.
+		// b) mysql/postgres; DB connection is generally a separate CONN_TRX_AUTOCOMMIT handle.
 		// No transaction is active nor will be started by writes, so enqueue the jobs
 		// now so that any errors will show up immediately as the interface expects. Any
 		// errors that bubble up will rollback the main commit round.
 		$fname = __METHOD__;
 		$dbw->onTransactionPreCommitOrIdle(
-			function () use ( $dbw, $jobs, $flags, $fname ) {
+			function ( IDatabase $dbw ) use ( $jobs, $flags, $fname ) {
 				$this->doBatchPushInternal( $dbw, $jobs, $flags, $fname );
 			},
 			$fname
@@ -221,7 +221,7 @@ class JobQueueDB extends JobQueue {
 		$rowSet = []; // (sha1 => job) map for jobs that are de-duplicated
 		$rowList = []; // list of jobs for jobs that are not de-duplicated
 		foreach ( $jobs as $job ) {
-			$row = $this->insertFields( $job );
+			$row = $this->insertFields( $job, $dbw );
 			if ( $job->ignoreDuplicates() ) {
 				$rowSet[$row['job_sha1']] = $row;
 			} else {
@@ -264,8 +264,6 @@ class JobQueueDB extends JobQueue {
 		if ( $flags & self::QOS_ATOMIC ) {
 			$dbw->endAtomic( $method );
 		}
-
-		return;
 	}
 
 	/**
@@ -500,15 +498,15 @@ class JobQueueDB extends JobQueue {
 			throw new MWException( "Cannot register root job; missing 'rootJobTimestamp'." );
 		}
 		$key = $this->getRootJobCacheKey( $params['rootJobSignature'] );
-		// Callers should call batchInsert() and then this function so that if the insert
+		// Callers should call JobQueueGroup::push() before this method so that if the insert
 		// fails, the de-duplication registration will be aborted. Since the insert is
 		// deferred till "transaction idle", do the same here, so that the ordering is
 		// maintained. Having only the de-duplication registration succeed would cause
 		// jobs to become no-ops without any actual jobs that made them redundant.
 		$dbw = $this->getMasterDB();
 		$cache = $this->dupCache;
-		$dbw->onTransactionIdle(
-			function () use ( $cache, $params, $key, $dbw ) {
+		$dbw->onTransactionCommitOrIdle(
+			function () use ( $cache, $params, $key ) {
 				$timestamp = $cache->get( $key ); // current last timestamp of this job
 				if ( $timestamp && $timestamp >= $params['rootJobTimestamp'] ) {
 					return true; // a newer version of this root job was enqueued
@@ -544,7 +542,8 @@ class JobQueueDB extends JobQueue {
 	 */
 	protected function doWaitForBackups() {
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-		$lbFactory->waitForReplication( [ 'wiki' => $this->wiki, 'cluster' => $this->cluster ] );
+		$lbFactory->waitForReplication(
+			[ 'domain' => $this->domain, 'cluster' => $this->cluster ] );
 	}
 
 	/**
@@ -600,8 +599,8 @@ class JobQueueDB extends JobQueue {
 
 	public function getCoalesceLocationInternal() {
 		return $this->cluster
-			? "DBCluster:{$this->cluster}:{$this->wiki}"
-			: "LBFactory:{$this->wiki}";
+			? "DBCluster:{$this->cluster}:{$this->domain}"
+			: "LBFactory:{$this->domain}";
 	}
 
 	protected function doGetSiblingQueuesWithJobs( array $types ) {
@@ -683,7 +682,7 @@ class JobQueueDB extends JobQueue {
 					$affected = $dbw->affectedRows();
 					$count += $affected;
 					JobQueue::incrStats( 'recycles', $this->type, $affected );
-					$this->aggr->notifyQueueNonEmpty( $this->wiki, $this->type );
+					$this->aggr->notifyQueueNonEmpty( $this->domain, $this->type );
 				}
 			}
 
@@ -722,11 +721,10 @@ class JobQueueDB extends JobQueue {
 
 	/**
 	 * @param IJobSpecification $job
+	 * @param IDatabase $db
 	 * @return array
 	 */
-	protected function insertFields( IJobSpecification $job ) {
-		$dbw = $this->getMasterDB();
-
+	protected function insertFields( IJobSpecification $job, IDatabase $db ) {
 		return [
 			// Fields that describe the nature of the job
 			'job_cmd' => $job->getType(),
@@ -734,7 +732,7 @@ class JobQueueDB extends JobQueue {
 			'job_title' => $job->getTitle()->getDBkey(),
 			'job_params' => self::makeBlob( $job->getParams() ),
 			// Additional job metadata
-			'job_timestamp' => $dbw->timestamp(),
+			'job_timestamp' => $db->timestamp(),
 			'job_sha1' => Wikimedia\base_convert(
 				sha1( serialize( $job->getDeduplicationInfo() ) ),
 				16, 36, 31
@@ -775,14 +773,14 @@ class JobQueueDB extends JobQueue {
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 		$lb = ( $this->cluster !== false )
 			? $lbFactory->getExternalLB( $this->cluster )
-			: $lbFactory->getMainLB( $this->wiki );
+			: $lbFactory->getMainLB( $this->domain );
 
 		return ( $lb->getServerType( $lb->getWriterIndex() ) !== 'sqlite' )
 			// Keep a separate connection to avoid contention and deadlocks;
 			// However, SQLite has the opposite behavior due to DB-level locking.
-			? $lb->getConnectionRef( $index, [], $this->wiki, $lb::CONN_TRX_AUTO )
+			? $lb->getConnectionRef( $index, [], $this->domain, $lb::CONN_TRX_AUTOCOMMIT )
 			// Jobs insertion will be defered until the PRESEND stage to reduce contention.
-			: $lb->getConnectionRef( $index, [], $this->wiki );
+			: $lb->getConnectionRef( $index, [], $this->domain );
 	}
 
 	/**
@@ -790,10 +788,15 @@ class JobQueueDB extends JobQueue {
 	 * @return string
 	 */
 	private function getCacheKey( $property ) {
-		list( $db, $prefix ) = wfSplitWikiID( $this->wiki );
 		$cluster = is_string( $this->cluster ) ? $this->cluster : 'main';
 
-		return wfForeignMemcKey( $db, $prefix, 'jobqueue', $cluster, $this->type, $property );
+		return $this->cache->makeGlobalKey(
+			'jobqueue',
+			$this->domain,
+			$cluster,
+			$this->type,
+			$property
+		);
 	}
 
 	/**

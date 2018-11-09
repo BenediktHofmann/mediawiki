@@ -77,16 +77,7 @@ class DatabaseMssql extends Database {
 		parent::__construct( $params );
 	}
 
-	/**
-	 * Usually aborts on failure
-	 * @param string $server
-	 * @param string $user
-	 * @param string $password
-	 * @param string $dbName
-	 * @throws DBConnectionError
-	 * @return bool|resource|null
-	 */
-	public function open( $server, $user, $password, $dbName ) {
+	protected function open( $server, $user, $password, $dbName, $schema, $tablePrefix ) {
 		# Test for driver support, to avoid suppressed fatal error
 		if ( !function_exists( 'sqlsrv_connect' ) ) {
 			throw new DBConnectionError(
@@ -105,11 +96,10 @@ class DatabaseMssql extends Database {
 		$this->server = $server;
 		$this->user = $user;
 		$this->password = $password;
-		$this->dbName = $dbName;
 
 		$connectionInfo = [];
 
-		if ( $dbName ) {
+		if ( $dbName != '' ) {
 			$connectionInfo['Database'] = $dbName;
 		}
 
@@ -129,8 +119,13 @@ class DatabaseMssql extends Database {
 		}
 
 		$this->opened = true;
+		$this->currentDomain = new DatabaseDomain(
+			( $dbName != '' ) ? $dbName : null,
+			null,
+			$tablePrefix
+		);
 
-		return $this->conn;
+		return (bool)$this->conn;
 	}
 
 	/**
@@ -243,7 +238,7 @@ class DatabaseMssql extends Database {
 	}
 
 	/**
-	 * @param MssqlResultWrapper $res
+	 * @param IResultWrapper $res
 	 * @return stdClass
 	 */
 	public function fetchObject( $res ) {
@@ -252,7 +247,7 @@ class DatabaseMssql extends Database {
 	}
 
 	/**
-	 * @param MssqlResultWrapper $res
+	 * @param IResultWrapper $res
 	 * @return array
 	 */
 	public function fetchRow( $res ) {
@@ -357,6 +352,28 @@ class DatabaseMssql extends Database {
 		} else {
 			return 0;
 		}
+	}
+
+	protected function wasKnownStatementRollbackError() {
+		$errors = sqlsrv_errors( SQLSRV_ERR_ALL );
+		if ( !$errors ) {
+			return false;
+		}
+		// The transaction vs statement rollback behavior depends on XACT_ABORT, so make sure
+		// that the "statement has been terminated" error (3621) is specifically present.
+		// https://docs.microsoft.com/en-us/sql/t-sql/statements/set-xact-abort-transact-sql
+		$statementOnly = false;
+		$codeWhitelist = [ '2601', '2627', '547' ];
+		foreach ( $errors as $error ) {
+			if ( $error['code'] == '3621' ) {
+				$statementOnly = true;
+			} elseif ( !in_array( $error['code'], $codeWhitelist ) ) {
+				$statementOnly = false;
+				break;
+			}
+		}
+
+		return $statementOnly;
 	}
 
 	/**
@@ -496,6 +513,8 @@ class DatabaseMssql extends Database {
 			throw $e;
 		}
 		$this->scrollableCursor = true;
+
+		return true;
 	}
 
 	/**
@@ -505,20 +524,26 @@ class DatabaseMssql extends Database {
 	 * Returns -1 if count cannot be found
 	 * Takes same arguments as Database::select()
 	 * @param string $table
-	 * @param string $vars
+	 * @param string $var
 	 * @param string $conds
 	 * @param string $fname
 	 * @param array $options
 	 * @param array $join_conds
 	 * @return int
 	 */
-	public function estimateRowCount( $table, $vars = '*', $conds = '',
+	public function estimateRowCount( $table, $var = '*', $conds = '',
 		$fname = __METHOD__, $options = [], $join_conds = []
 	) {
+		$conds = $this->normalizeConditions( $conds, $fname );
+		$column = $this->extractSingleFieldFromList( $var );
+		if ( is_string( $column ) && !in_array( $column, [ '*', '1' ] ) ) {
+			$conds[] = "$column IS NOT NULL";
+		}
+
 		// http://msdn2.microsoft.com/en-us/library/aa259203.aspx
 		$options['EXPLAIN'] = true;
 		$options['FOR COUNT'] = true;
-		$res = $this->select( $table, $vars, $conds, $fname, $options, $join_conds );
+		$res = $this->select( $table, $var, $conds, $fname, $options, $join_conds );
 
 		$rows = -1;
 		if ( $res ) {
@@ -718,7 +743,7 @@ class DatabaseMssql extends Database {
 
 		$this->ignoreDupKeyErrors = false;
 
-		return $ret;
+		return true;
 	}
 
 	/**
@@ -734,15 +759,14 @@ class DatabaseMssql extends Database {
 	 * @param array $insertOptions
 	 * @param array $selectOptions
 	 * @param array $selectJoinConds
-	 * @return bool
 	 * @throws Exception
 	 */
-	public function nativeInsertSelect( $destTable, $srcTable, $varMap, $conds, $fname = __METHOD__,
+	protected function nativeInsertSelect( $destTable, $srcTable, $varMap, $conds, $fname = __METHOD__,
 		$insertOptions = [], $selectOptions = [], $selectJoinConds = []
 	) {
 		$this->scrollableCursor = false;
 		try {
-			$ret = parent::nativeInsertSelect(
+			parent::nativeInsertSelect(
 				$destTable,
 				$srcTable,
 				$varMap,
@@ -757,8 +781,6 @@ class DatabaseMssql extends Database {
 			throw $e;
 		}
 		$this->scrollableCursor = true;
-
-		return $ret;
 	}
 
 	/**
@@ -964,10 +986,7 @@ class DatabaseMssql extends Database {
 	 */
 	public function getServerVersion() {
 		$server_info = sqlsrv_server_info( $this->conn );
-		$version = 'Error';
-		if ( isset( $server_info['SQLServerVersion'] ) ) {
-			$version = $server_info['SQLServerVersion'];
-		}
+		$version = $server_info['SQLServerVersion'] ?? 'Error';
 
 		return $version;
 	}
@@ -987,7 +1006,7 @@ class DatabaseMssql extends Database {
 		}
 
 		if ( $schema === false ) {
-			$schema = $this->schema;
+			$schema = $this->dbSchema();
 		}
 
 		$res = $this->query( "SELECT 1 FROM INFORMATION_SCHEMA.TABLES
@@ -1045,6 +1064,19 @@ class DatabaseMssql extends Database {
 		}
 
 		return false;
+	}
+
+	protected function doSavepoint( $identifier, $fname ) {
+		$this->query( 'SAVE TRANSACTION ' . $this->addIdentifierQuotes( $identifier ), $fname );
+	}
+
+	protected function doReleaseSavepoint( $identifier, $fname ) {
+		// Not supported. Also not really needed, a new doSavepoint() for the
+		// same identifier will overwrite the old.
+	}
+
+	protected function doRollbackToSavepoint( $identifier, $fname ) {
+		$this->query( 'ROLLBACK TRANSACTION ' . $this->addIdentifierQuotes( $identifier ), $fname );
 	}
 
 	/**
@@ -1135,18 +1167,13 @@ class DatabaseMssql extends Database {
 			$s );
 	}
 
-	/**
-	 * @param string $db
-	 * @return bool
-	 */
-	public function selectDB( $db ) {
-		try {
-			$this->dbName = $db;
-			$this->query( "USE $db" );
-			return true;
-		} catch ( Exception $e ) {
-			return false;
-		}
+	protected function doSelectDomain( DatabaseDomain $domain ) {
+		$encDatabase = $this->addIdentifierQuotes( $domain->getDatabase() );
+		$this->query( "USE $encDatabase" );
+		// Update that domain fields on success (no exception thrown)
+		$this->currentDomain = $domain;
+
+		return true;
 	}
 
 	/**
@@ -1253,9 +1280,7 @@ class DatabaseMssql extends Database {
 			$this->populateColumnCaches();
 		}
 
-		return isset( $this->binaryColumnCache[$tableRaw] )
-			? $this->binaryColumnCache[$tableRaw]
-			: [];
+		return $this->binaryColumnCache[$tableRaw] ?? [];
 	}
 
 	/**
@@ -1270,16 +1295,14 @@ class DatabaseMssql extends Database {
 			$this->populateColumnCaches();
 		}
 
-		return isset( $this->bitColumnCache[$tableRaw] )
-			? $this->bitColumnCache[$tableRaw]
-			: [];
+		return $this->bitColumnCache[$tableRaw] ?? [];
 	}
 
 	private function populateColumnCaches() {
 		$res = $this->select( 'INFORMATION_SCHEMA.COLUMNS', '*',
 			[
-				'TABLE_CATALOG' => $this->dbName,
-				'TABLE_SCHEMA' => $this->schema,
+				'TABLE_CATALOG' => $this->getDBname(),
+				'TABLE_SCHEMA' => $this->dbSchema(),
 				'DATA_TYPE' => [ 'varbinary', 'binary', 'image', 'bit' ]
 			] );
 
@@ -1377,4 +1400,7 @@ class DatabaseMssql extends Database {
 	}
 }
 
+/**
+ * @deprecated since 1.29
+ */
 class_alias( DatabaseMssql::class, 'DatabaseMssql' );

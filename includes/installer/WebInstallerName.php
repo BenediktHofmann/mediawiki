@@ -19,6 +19,8 @@
  * @ingroup Deployment
  */
 
+use MediaWiki\MediaWikiServices;
+
 class WebInstallerName extends WebInstallerPage {
 
 	/**
@@ -76,7 +78,7 @@ class WebInstallerName extends WebInstallerPage {
 			$this->parent->getTextBox( [
 				'var' => 'wgMetaNamespace',
 				'label' => '', // @todo Needs a label?
-				'attribs' => [ 'readonly' => 'readonly', 'class' => 'enabledByOther' ]
+				'attribs' => [ 'class' => 'enabledByOther' ]
 			] ) .
 			$this->getFieldsetStart( 'config-admin-box' ) .
 			$this->parent->getTextBox( [
@@ -186,8 +188,7 @@ class WebInstallerName extends WebInstallerPage {
 		}
 
 		// Make sure it won't conflict with any existing namespaces
-		global $wgContLang;
-		$nsIndex = $wgContLang->getNsIndex( $name );
+		$nsIndex = MediaWikiServices::getInstance()->getContentLanguage()->getNsIndex( $name );
 		if ( $nsIndex !== false && $nsIndex !== NS_PROJECT ) {
 			$this->parent->showError( 'config-ns-conflict', $name );
 			$retVal = false;
@@ -223,7 +224,7 @@ class WebInstallerName extends WebInstallerPage {
 			$status = $upp->checkUserPasswordForGroups(
 				$user,
 				$pwd,
-				[ 'bureaucrat', 'sysop' ]  // per Installer::createSysop()
+				[ 'bureaucrat', 'sysop', 'interface-admin' ]  // per Installer::createSysop()
 			);
 			$valid = $status->isGood() ? true : $status->getMessage();
 		} else {

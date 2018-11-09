@@ -243,12 +243,6 @@ class ApiParse extends ApiBase {
 			if ( $params['onlypst'] ) {
 				// Build a result and bail out
 				$result_array = [];
-				if ( $this->contentIsDeleted ) {
-					$result_array['textdeleted'] = true;
-				}
-				if ( $this->contentIsSuppressed ) {
-					$result_array['textsuppressed'] = true;
-				}
 				$result_array['text'] = $this->pstContent->serialize( $format );
 				$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'text';
 				if ( isset( $prop['wikitext'] ) ) {
@@ -320,16 +314,19 @@ class ApiParse extends ApiBase {
 
 			$outputPage = new OutputPage( $context );
 			$outputPage->addParserOutputMetadata( $p_result );
+			if ( $this->content ) {
+				$outputPage->addContentOverride( $titleObj, $this->content );
+			}
 			$context->setOutput( $outputPage );
 
 			if ( $skin ) {
 				// Based on OutputPage::headElement()
 				$skin->setupSkinUserCss( $outputPage );
 				// Based on OutputPage::output()
-				foreach ( $skin->getDefaultModules() as $group ) {
-					$outputPage->addModules( $group );
-				}
+				$outputPage->loadSkinModules( $skin );
 			}
+
+			Hooks::run( 'ApiParseMakeOutputPage', [ $this, $outputPage ] );
 		}
 
 		if ( !is_null( $oldid ) ) {
@@ -344,7 +341,7 @@ class ApiParse extends ApiBase {
 			$result_array['text'] = $p_result->getText( [
 				'allowTOC' => !$params['disabletoc'],
 				'enableSectionEditLinks' => !$params['disableeditsection'],
-				'unwrap' => $params['wrapoutputclass'] === '',
+				'wrapperDivClass' => $params['wrapoutputclass'],
 				'deduplicateStyles' => !$params['disablestylededuplication'],
 			] );
 			$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'text';
@@ -400,8 +397,8 @@ class ApiParse extends ApiBase {
 		}
 
 		if ( isset( $prop['displaytitle'] ) ) {
-			$result_array['displaytitle'] = $p_result->getDisplayTitle() ?:
-				$titleObj->getPrefixedText();
+			$result_array['displaytitle'] = $p_result->getDisplayTitle() !== false
+				? $p_result->getDisplayTitle() : $titleObj->getPrefixedText();
 		}
 
 		if ( isset( $prop['headitems'] ) ) {
@@ -490,12 +487,7 @@ class ApiParse extends ApiBase {
 			}
 
 			$wgParser->startExternalParse( $titleObj, $popts, Parser::OT_PREPROCESS );
-			$dom = $wgParser->preprocessToDom( $this->content->getNativeData() );
-			if ( is_callable( [ $dom, 'saveXML' ] ) ) {
-				$xml = $dom->saveXML();
-			} else {
-				$xml = $dom->__toString();
-			}
+			$xml = $wgParser->preprocessToDom( $this->content->getNativeData() )->__toString();
 			$result_array['parsetree'] = $xml;
 			$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'parsetree';
 		}
@@ -578,7 +570,7 @@ class ApiParse extends ApiBase {
 			} else {
 				$this->content = $page->getContent( Revision::FOR_THIS_USER, $this->getUser() );
 				if ( !$this->content ) {
-					$this->dieWithError( [ 'apierror-missingcontent-pageid', $pageId ] );
+					$this->dieWithError( [ 'apierror-missingcontent-pageid', $page->getId() ] );
 				}
 			}
 			$this->contentIsDeleted = $isDeleted;
@@ -602,7 +594,7 @@ class ApiParse extends ApiBase {
 			$pout = $page->getParserOutput( $popts, $revId, $suppressCache );
 		}
 		if ( !$pout ) {
-			$this->dieWithError( [ 'apierror-nosuchrevid', $revId ?: $page->getLatest() ] );
+			$this->dieWithError( [ 'apierror-nosuchrevid', $revId ?: $page->getLatest() ] ); // @codeCoverageIgnore
 		}
 
 		return $pout;
@@ -633,7 +625,7 @@ class ApiParse extends ApiBase {
 	 * This mimicks the behavior of EditPage in formatting a summary
 	 *
 	 * @param Title $title of the page being parsed
-	 * @param Array $params the API parameters of the request
+	 * @param array $params The API parameters of the request
 	 * @return Content|bool
 	 */
 	private function formatSummary( $title, $params ) {
@@ -705,7 +697,7 @@ class ApiParse extends ApiBase {
 			$hiddencats[$row->page_title] = isset( $row->pp_propname );
 		}
 
-		$linkCache = LinkCache::singleton();
+		$linkCache = MediaWikiServices::getInstance()->getLinkCache();
 
 		foreach ( $links as $link => $sortkey ) {
 			$entry = [];
@@ -876,7 +868,10 @@ class ApiParse extends ApiBase {
 			],
 			'disablelimitreport' => false,
 			'disableeditsection' => false,
-			'disabletidy' => false,
+			'disabletidy' => [
+				ApiBase::PARAM_DFLT => false,
+				ApiBase::PARAM_DEPRECATED => true, // Since 1.32
+			],
 			'disablestylededuplication' => false,
 			'generatexml' => [
 				ApiBase::PARAM_DFLT => false,

@@ -84,10 +84,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 		$this->assertTrue( is_object( $results ) );
 
 		$matches = [];
-		$row = $results->next();
-		while ( $row ) {
+		foreach ( $results as $row ) {
 			$matches[] = $row->getTitle()->getPrefixedText();
-			$row = $results->next();
 		}
 		$results->free();
 		# Search is not guaranteed to return results in a certain order;
@@ -173,7 +171,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	public function testPhraseSearchHighlight() {
 		$phrase = "smithee is one who smiths";
 		$res = $this->search->searchText( "\"$phrase\"" );
-		$match = $res->next();
+		$match = $res->getIterator()->current();
 		$snippet = "A <span class='searchmatch'>" . $phrase . "</span>";
 		$this->assertStringStartsWith( $snippet,
 			$match->getTextSnippet( $res->termMatches() ),
@@ -277,7 +275,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 		$this->mergeMwGlobalArrayValue( 'wgHooks',
 			[ 'SearchResultsAugment' => [ [ $this, 'addAugmentors' ] ] ] );
 		$this->search->augmentSearchResults( $resultSet );
-		for ( $result = $resultSet->next(); $result; $result = $resultSet->next() ) {
+		foreach ( $resultSet as $result ) {
 			$id = $result->getTitle()->getArticleID();
 			$augmentData = "Result:$id:" . $result->getTitle()->getText();
 			$augmentData2 = "Result2:$id:" . $result->getTitle()->getText();
@@ -292,11 +290,10 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 			->method( 'augmentAll' )
 			->willReturnCallback( function ( SearchResultSet $resultSet ) {
 				$data = [];
-				for ( $result = $resultSet->next(); $result; $result = $resultSet->next() ) {
+				foreach ( $resultSet as $result ) {
 					$id = $result->getTitle()->getArticleID();
 					$data[$id] = "Result:$id:" . $result->getTitle()->getText();
 				}
-				$resultSet->rewind();
 				return $data;
 			} );
 		$setAugmentors['testSet'] = $setAugmentor;
@@ -309,5 +306,154 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 				return "Result2:$id:" . $result->getTitle()->getText();
 			} );
 		$rowAugmentors['testRow'] = $rowAugmentor;
+	}
+
+	public function testFiltersMissing() {
+		$availableResults = [];
+		foreach ( range( 0, 11 ) as $i ) {
+			$title = "Search_Result_$i";
+			$availableResults[] = $title;
+			// pages not created must be filtered
+			if ( $i % 2 == 0 ) {
+				$this->editSearchResultPage( $title );
+			}
+		}
+		MockCompletionSearchEngine::addMockResults( 'foo', $availableResults );
+
+		$engine = new MockCompletionSearchEngine();
+		$engine->setLimitOffset( 10, 0 );
+		$results = $engine->completionSearch( 'foo' );
+		$this->assertEquals( 5, $results->getSize() );
+		$this->assertTrue( $results->hasMoreResults() );
+
+		$engine->setLimitOffset( 10, 10 );
+		$results = $engine->completionSearch( 'foo' );
+		$this->assertEquals( 1, $results->getSize() );
+		$this->assertFalse( $results->hasMoreResults() );
+	}
+
+	private function editSearchResultPage( $title ) {
+		$page = WikiPage::factory( Title::newFromText( $title ) );
+		$page->doEditContent(
+			new WikitextContent( 'UTContent' ),
+			'UTPageSummary',
+			EDIT_NEW | EDIT_SUPPRESS_RC
+		);
+	}
+
+	public function provideDataForParseNamespacePrefix() {
+		return [
+			'noop' => [
+				[
+					'query' => 'foo',
+				],
+				false
+			],
+			'empty' => [
+				[
+					'query' => '',
+				],
+				false,
+			],
+			'namespace prefix' => [
+				[
+					'query' => 'help:test',
+				],
+				[ 'test', [ NS_HELP ] ],
+			],
+			'accented namespace prefix with hook' => [
+				[
+					'query' => 'hélp:test',
+					'withHook' => true,
+				],
+				[ 'test', [ NS_HELP ] ],
+			],
+			'accented namespace prefix without hook' => [
+				[
+					'query' => 'hélp:test',
+					'withHook' => false,
+				],
+				false,
+			],
+			'all with all keyword allowed' => [
+				[
+					'query' => 'all:test',
+					'withAll' => true,
+				],
+				[ 'test', null ],
+			],
+			'all with all keyword disallowed' => [
+				[
+					'query' => 'all:test',
+					'withAll' => false,
+				],
+				false
+			],
+			'ns only' => [
+				[
+					'query' => 'help:',
+				],
+				[ '', [ NS_HELP ] ]
+			],
+			'all only' => [
+				[
+					'query' => 'all:',
+					'withAll' => true,
+				],
+				[ '', null ]
+			],
+			'all wins over namespace when first' => [
+				[
+					'query' => 'all:help:test',
+					'withAll' => true,
+				],
+				[ 'help:test', null ]
+			],
+			'ns wins over all when first' => [
+				[
+					'query' => 'help:all:test',
+					'withAll' => true,
+				],
+				[ 'all:test', [ NS_HELP ] ]
+			],
+		];
+	}
+
+	/**
+	 * @dataProvider provideDataForParseNamespacePrefix
+	 * @param array $params
+	 * @param  array|false $expected
+	 * @throws FatalError
+	 * @throws MWException
+	 */
+	public function testParseNamespacePrefix( array $params, $expected ) {
+		$this->setTemporaryHook( 'PrefixSearchExtractNamespace', function ( &$namespaces, &$query ) {
+			if ( strpos( $query, 'hélp:' ) === 0 ) {
+				$namespaces = [ NS_HELP ];
+				$query = substr( $query, strlen( 'hélp:' ) );
+			}
+			return false;
+		} );
+		$testSet = [];
+		if ( isset( $params['withAll'] ) && isset( $params['withHook'] ) ) {
+			$testSet[] = $params;
+		} elseif ( isset( $params['withAll'] ) ) {
+			$testSet[] = $params + [ 'withHook' => true ];
+			$testSet[] = $params + [ 'withHook' => false ];
+		} elseif ( isset( $params['withHook'] ) ) {
+			$testSet[] = $params + [ 'withAll' => true ];
+			$testSet[] = $params + [ 'withAll' => false ];
+		} else {
+			$testSet[] = $params + [ 'withAll' => true, 'withHook' => true ];
+			$testSet[] = $params + [ 'withAll' => true, 'withHook' => false ];
+			$testSet[] = $params + [ 'withAll' => false, 'withHook' => false ];
+			$testSet[] = $params + [ 'withAll' => true, 'withHook' => false ];
+		}
+
+		foreach ( $testSet as $test ) {
+			$actual = SearchEngine::parseNamespacePrefixes( $test['query'],
+				$test['withAll'], $test['withHook'] );
+			$this->assertEquals( $expected, $actual, 'with params: ' . print_r( $test, true ) );
+		}
 	}
 }

@@ -21,6 +21,8 @@
  * @ingroup SpecialPage
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * A special page that lists special pages
  *
@@ -50,7 +52,8 @@ class SpecialSpecialpages extends UnlistedSpecialPage {
 	}
 
 	private function getPageGroups() {
-		$pages = SpecialPageFactory::getUsablePages( $this->getUser() );
+		$pages = MediaWikiServices::getInstance()->getSpecialPageFactory()->
+			getUsablePages( $this->getUser() );
 
 		if ( !count( $pages ) ) {
 			# Yeah, that was pointless. Thanks for coming.
@@ -148,10 +151,9 @@ class SpecialSpecialpages extends UnlistedSpecialPage {
 			$out->wrapWikiMsg(
 				"<h2 class=\"mw-specialpages-note-top\">$1</h2>", 'specialpages-note-top'
 			);
-			$out->addWikiText(
-				"<div class=\"mw-specialpages-notes\">\n" .
-				implode( "\n", $notes ) .
-				"\n</div>"
+			$out->wrapWikiTextAsInterface(
+				'mw-specialpages-notes',
+				implode( "\n", $notes )
 			);
 		}
 	}

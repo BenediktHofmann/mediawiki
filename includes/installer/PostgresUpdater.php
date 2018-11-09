@@ -294,7 +294,7 @@ class PostgresUpdater extends DatabaseUpdater {
 				[ 'log_timestamp', 'timestamptz_ops', 'btree', 0 ],
 			],
 			'CREATE INDEX "logging_times" ON "logging" USING "btree" ("log_timestamp")' ],
-			[ 'dropIndex', 'oldimage', 'oi_name' ],
+			[ 'dropPgIndex', 'oldimage', 'oi_name' ],
 			[ 'checkIndex', 'oi_name_archive_name', [
 				[ 'oi_name', 'text_ops', 'btree', 0 ],
 				[ 'oi_archive_name', 'text_ops', 'btree', 0 ],
@@ -353,7 +353,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'checkOiNameConstraint' ],
 			[ 'checkPageDeletedTrigger' ],
 			[ 'checkRevUserFkey' ],
-			[ 'dropIndex', 'ipblocks', 'ipb_address' ],
+			[ 'dropPgIndex', 'ipblocks', 'ipb_address' ],
 			[ 'checkIndex', 'ipb_address_unique', [
 				[ 'ipb_address', 'text_ops', 'btree', 0 ],
 				[ 'ipb_user', 'int4_ops', 'btree', 0 ],
@@ -481,12 +481,25 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeNullableField', 'protected_titles', 'pt_reason', 'NOT NULL', true ],
 			[ 'addPgField', 'protected_titles', 'pt_reason_id', 'INTEGER NOT NULL DEFAULT 0' ],
 			[ 'addTable', 'comment', 'patch-comment-table.sql' ],
+
+			// This field was added in 1.31, but is put here so it can be used by 'migrateComments'
+			[ 'addPgField', 'image', 'img_description_id', 'INTEGER NOT NULL DEFAULT 0' ],
+
 			[ 'migrateComments' ],
 			[ 'addIndex', 'site_stats', 'site_stats_pkey', 'patch-site_stats-pk.sql' ],
 			[ 'addTable', 'ip_changes', 'patch-ip_changes.sql' ],
 
 			// 1.31
 			[ 'addTable', 'slots', 'patch-slots-table.sql' ],
+			[ 'dropPgIndex', 'slots', 'slot_role_inherited' ],
+			[ 'dropPgField', 'slots', 'slot_inherited' ],
+			[ 'addPgField', 'slots', 'slot_origin', 'INTEGER NOT NULL' ],
+			[
+				'addPgIndex',
+				'slots',
+				'slot_revision_origin_role',
+				'( slot_revision_id, slot_origin, slot_role_id )',
+			],
 			[ 'addTable', 'content', 'patch-content-table.sql' ],
 			[ 'addTable', 'content_models', 'patch-content_models-table.sql' ],
 			[ 'addTable', 'slot_roles', 'patch-slot_roles-table.sql' ],
@@ -524,6 +537,67 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgIndex', 'logging', 'logging_actor_type_time', '( log_actor, log_type, log_timestamp )' ],
 			[ 'addPgIndex', 'logging', 'logging_actor_time', '( log_actor, log_timestamp )' ],
 			[ 'migrateActors' ],
+			[ 'modifyTable', 'site_stats', 'patch-site_stats-modify.sql' ],
+			[ 'populateArchiveRevId' ],
+			[ 'dropPgIndex', 'recentchanges', 'rc_namespace_title' ],
+			[
+				'addPgIndex',
+				'recentchanges',
+				'rc_namespace_title_timestamp', '( rc_namespace, rc_title, rc_timestamp )'
+			],
+			[ 'setSequenceOwner', 'mwuser', 'user_id', 'user_user_id_seq' ],
+			[ 'setSequenceOwner', 'actor', 'actor_id', 'actor_actor_id_seq' ],
+			[ 'setSequenceOwner', 'page', 'page_id', 'page_page_id_seq' ],
+			[ 'setSequenceOwner', 'revision', 'rev_id', 'revision_rev_id_seq' ],
+			[ 'setSequenceOwner', 'ip_changes', 'ipc_rev_id', 'ip_changes_ipc_rev_id_seq' ],
+			[ 'setSequenceOwner', 'pagecontent', 'old_id', 'text_old_id_seq' ],
+			[ 'setSequenceOwner', 'comment', 'comment_id', 'comment_comment_id_seq' ],
+			[ 'setSequenceOwner', 'page_restrictions', 'pr_id', 'page_restrictions_pr_id_seq' ],
+			[ 'setSequenceOwner', 'archive', 'ar_id', 'archive_ar_id_seq' ],
+			[ 'setSequenceOwner', 'content', 'content_id', 'content_content_id_seq' ],
+			[ 'setSequenceOwner', 'slot_roles', 'role_id', 'slot_roles_role_id_seq' ],
+			[ 'setSequenceOwner', 'content_models', 'model_id', 'content_models_model_id_seq' ],
+			[ 'setSequenceOwner', 'externallinks', 'el_id', 'externallinks_el_id_seq' ],
+			[ 'setSequenceOwner', 'ipblocks', 'ipb_id', 'ipblocks_ipb_id_seq' ],
+			[ 'setSequenceOwner', 'filearchive', 'fa_id', 'filearchive_fa_id_seq' ],
+			[ 'setSequenceOwner', 'uploadstash', 'us_id', 'uploadstash_us_id_seq' ],
+			[ 'setSequenceOwner', 'recentchanges', 'rc_id', 'recentchanges_rc_id_seq' ],
+			[ 'setSequenceOwner', 'watchlist', 'wl_id', 'watchlist_wl_id_seq' ],
+			[ 'setSequenceOwner', 'logging', 'log_id', 'logging_log_id_seq' ],
+			[ 'setSequenceOwner', 'job', 'job_id', 'job_job_id_seq' ],
+			[ 'setSequenceOwner', 'category', 'cat_id', 'category_cat_id_seq' ],
+			[ 'setSequenceOwner', 'change_tag', 'ct_id', 'change_tag_ct_id_seq' ],
+			[ 'setSequenceOwner', 'tag_summary', 'ts_id', 'tag_summary_ts_id_seq' ],
+			[ 'setSequenceOwner', 'sites', 'site_id', 'sites_site_id_seq' ],
+
+			// 1.32
+			[ 'addTable', 'change_tag_def', 'patch-change_tag_def.sql' ],
+			[ 'populateExternallinksIndex60' ],
+			[ 'dropDefault', 'externallinks', 'el_index_60' ],
+			[ 'runMaintenance', DeduplicateArchiveRevId::class, 'maintenance/deduplicateArchiveRevId.php' ],
+			[ 'addPgField', 'change_tag', 'ct_tag_id', 'INTEGER NULL' ],
+			[
+				'addPgIndex',
+				'change_tag',
+				'change_tag_tag_id_id',
+				'( ct_tag_id, ct_rc_id, ct_rev_id, ct_log_id )'
+			],
+			[ 'addPgIndex', 'archive', 'ar_revid_uniq', '(ar_rev_id)', 'unique' ],
+			[ 'dropPgIndex', 'archive', 'ar_revid' ], // Probably doesn't exist, but do it anyway.
+			[ 'populateContentTables' ],
+			[ 'addPgIndex', 'logging', 'log_type_action', '( log_type, log_action, log_timestamp )' ],
+			[ 'dropPgIndex', 'page_props', 'page_props_propname' ],
+			[ 'addIndex', 'interwiki', 'interwiki_pkey', 'patch-interwiki-pk.sql' ],
+			[ 'addIndex', 'protected_titles', 'protected_titles_pkey', 'patch-protected_titles-pk.sql' ],
+			[ 'addIndex', 'site_identifiers', 'site_identifiers_pkey', 'patch-site_identifiers-pk.sql' ],
+			[ 'addPgIndex', 'recentchanges', 'rc_this_oldid', '(rc_this_oldid)' ],
+			[ 'dropTable', 'transcache' ],
+			[ 'runMaintenance', PopulateChangeTagDef::class, 'maintenance/populateChangeTagDef.php' ],
+			[ 'addIndex', 'change_tag', 'change_tag_rc_tag_id',
+				'patch-change_tag-change_tag_rc_tag_id.sql' ],
+			[ 'addPgField', 'ipblocks', 'ipb_sitewide', 'SMALLINT NOT NULL DEFAULT 1' ],
+			[ 'addTable', 'ipblocks_restrictions', 'patch-ipblocks_restrictions-table.sql' ],
+			[ 'migrateImageCommentTemp' ],
 		];
 	}
 
@@ -691,9 +765,11 @@ END;
 	protected function addSequence( $table, $pkey, $ns ) {
 		if ( !$this->db->sequenceExists( $ns ) ) {
 			$this->output( "Creating sequence $ns\n" );
-			$this->db->query( "CREATE SEQUENCE $ns" );
 			if ( $pkey !== false ) {
+				$this->db->query( "CREATE SEQUENCE $ns OWNED BY $table.$pkey" );
 				$this->setDefault( $table, $pkey, '"nextval"(\'"' . $ns . '"\'::"regclass")' );
+			} else {
+				$this->db->query( "CREATE SEQUENCE $ns" );
 			}
 		}
 	}
@@ -714,6 +790,13 @@ END;
 		if ( $this->db->sequenceExists( $old ) ) {
 			$this->output( "Renaming sequence $old to $new\n" );
 			$this->db->query( "ALTER SEQUENCE $old RENAME TO $new" );
+		}
+	}
+
+	protected function setSequenceOwner( $table, $pkey, $seq ) {
+		if ( $this->db->sequenceExists( $seq ) ) {
+			$this->output( "Setting sequence $seq owner to $table.$pkey\n" );
+			$this->db->query( "ALTER SEQUENCE $seq OWNED BY $table.$pkey" );
 		}
 	}
 
@@ -761,6 +844,18 @@ END;
 		}
 
 		$this->db->query( "ALTER INDEX $old RENAME TO $new" );
+	}
+
+	protected function dropPgField( $table, $field ) {
+		$fi = $this->db->fieldInfo( $table, $field );
+		if ( is_null( $fi ) ) {
+			$this->output( "...$table table does not contain $field field.\n" );
+
+			return;
+		} else {
+			$this->output( "Dropping column '$table.$field'\n" );
+			$this->db->query( "ALTER TABLE $table DROP COLUMN $field" );
+		}
 	}
 
 	protected function addPgField( $table, $field, $type ) {
@@ -838,6 +933,20 @@ END;
 		}
 	}
 
+	/**
+	 * Drop a default value from a field
+	 * @since 1.32
+	 * @param string $table
+	 * @param string $field
+	 */
+	protected function dropDefault( $table, $field ) {
+		$info = $this->db->fieldInfo( $table, $field );
+		if ( $info->defaultValue() !== false ) {
+			$this->output( "Removing '$table.$field' default value\n" );
+			$this->db->query( "ALTER TABLE $table ALTER $field DROP DEFAULT" );
+		}
+	}
+
 	protected function changeNullableField( $table, $field, $null, $update = false ) {
 		$fi = $this->db->fieldInfo( $table, $field );
 		if ( is_null( $fi ) ) {
@@ -866,12 +975,13 @@ END;
 		}
 	}
 
-	public function addPgIndex( $table, $index, $type ) {
+	public function addPgIndex( $table, $index, $type, $unique = false ) {
 		if ( $this->db->indexExists( $table, $index ) ) {
 			$this->output( "...index '$index' on table '$table' already exists\n" );
 		} else {
 			$this->output( "Creating index '$index' on table '$table' $type\n" );
-			$this->db->query( "CREATE INDEX $index ON $table $type" );
+			$unique = $unique ? 'UNIQUE' : '';
+			$this->db->query( "CREATE $unique INDEX $index ON $table $type" );
 		}
 	}
 
@@ -1039,7 +1149,7 @@ END;
 		}
 	}
 
-	protected function dropIndex( $table, $index, $patch = '', $fullpath = false ) {
+	protected function dropPgIndex( $table, $index ) {
 		if ( $this->db->indexExists( $table, $index ) ) {
 			$this->output( "Dropping obsolete index '$index'\n" );
 			$this->db->query( "DROP INDEX \"" . $index . "\"" );

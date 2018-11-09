@@ -9,7 +9,8 @@
 			"아라",
 			"Macofe",
 			"Mbrt",
-			"Empu"
+			"Empu",
+			"Fitoschido"
 		]
 	},
 	"tog-underline": "Garisen ngisoré pranala:",
@@ -20,7 +21,6 @@
 	"tog-extendwatchlist": "Kembangna daftar pengawasan kanggo nidokna kabeh pangowahan, ora mung sing paling anyar thok",
 	"tog-usenewrc": "Klompok owahan miturut kaca nang owahan anyar lan daptar pangawasan (mbutuhna JavaScript)",
 	"tog-numberheadings": "Aweh nomer judul secara otomatis",
-	"tog-showtoolbar": "Tidhokna bilah alat penyuntingan",
 	"tog-editondblclick": "Nyunting kaca nganggo klik ping loro",
 	"tog-editsectiononrightclick": "Aktifna panyuntingan subbagian nganggo klik-tengen nang judul bagian",
 	"tog-watchcreations": "Tambahna kaca gaweanne inyong lan berkas sing tek unggah nang daptar pangawasanne inyong",
@@ -1058,7 +1058,7 @@
 	"statistics-files": "Berkas sing diunggahna",
 	"statistics-edits": "Jumlah suntingan sapet {{SITENAME}} dimolai",
 	"statistics-edits-average": "Rata-rata suntingan saben kaca",
-	"statistics-users": "Jumlah [[Special:ListUsers|panganggo sing kedaftar]]",
+	"statistics-users": "Jumlah panganggo sing kedaftar",
 	"statistics-users-active": "Jumlah panganggo aktif",
 	"statistics-users-active-desc": "Panganggo sing nglakokna aktivitas nang {{PLURAL:$1|dina|$1 dina}} pungkasan",
 	"doubleredirects": "Pangalihan dobel",
@@ -1258,8 +1258,8 @@
 	"whatlinkshere": "Pranala Kaca Kiye",
 	"whatlinkshere-title": "Kaca-kaca sing duwe pranala maring \"$1\"",
 	"whatlinkshere-page": "Kaca:",
-	"linkshere": "Kaca-kaca kiye duwe pranala maring '''[[:$1]]''':",
-	"nolinkshere": "Ora ana kaca sing nduwé pranala maring '''[[:$1]]'''.",
+	"linkshere": "Kaca-kaca kiye duwe pranala maring '''$2''':",
+	"nolinkshere": "Ora ana kaca sing nduwé pranala maring '''$2'''.",
 	"isredirect": "kaca pangalihan",
 	"istemplate": "karo cithakan",
 	"isimage": "pranala berkas",

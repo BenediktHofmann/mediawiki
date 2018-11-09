@@ -7,6 +7,7 @@ $wgUrlProtocols[] = 'file://';
 $wgNamespacesWithSubpages[NS_MAIN] = true;
 $wgExternalLinkTarget = '_blank';
 $wgBlockDisablesLogin = true;
+$wgEnableUploads = true;
 
 //Default MediaWiki settings needed for BlueSpice
 $GLOBALS['wgNamespacesWithSubpages'][NS_MAIN] = true;
@@ -24,5 +25,3 @@ $GLOBALS['wgUrlProtocols'][] = "file://";
 $GLOBALS['wgVerifyMimeType'] = false;
 $GLOBALS['wgAllowJavaUploads'] = true;
 
-//Skin specific
-$GLOBALS['wgDefaultSkin'] = 'bluespiceskin';

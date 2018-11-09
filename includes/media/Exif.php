@@ -20,7 +20,7 @@
  * @ingroup Media
  * @author Ævar Arnfjörð Bjarmason <avarab@gmail.com>
  * @copyright Copyright © 2005, Ævar Arnfjörð Bjarmason, 2009 Brent Garber
- * @license http://www.gnu.org/copyleft/gpl.html GNU General Public License
+ * @license GPL-2.0-or-later
  * @see http://exif.org/Exif2-2.PDF The Exif 2.2 specification
  * @file
  */
@@ -742,12 +742,16 @@ class Exif {
 				$ecount = 1; // checking individual elements
 			}
 		}
-		$count = count( $val );
-		if ( $ecount != $count ) {
-			$this->debug( $val, __FUNCTION__, "Expected $ecount elements for $tag but got $count" );
 
-			return false;
+		$count = 1;
+		if ( is_array( $val ) ) {
+			$count = count( $val );
+			if ( $ecount != $count ) {
+				$this->debug( $val, __FUNCTION__, "Expected $ecount elements for $tag but got $count" );
+				return false;
+			}
 		}
+		// If there are multiple values, recursively validate each of them.
 		if ( $count > 1 ) {
 			foreach ( $val as $v ) {
 				if ( !$this->validate( $section, $tag, $v, true ) ) {

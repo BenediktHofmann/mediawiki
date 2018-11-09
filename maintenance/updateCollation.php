@@ -187,13 +187,7 @@ TEXT
 				}
 				# cl_type will be wrong for lots of pages if cl_collation is 0,
 				# so let's update it while we're here.
-				if ( $title->getNamespace() == NS_CATEGORY ) {
-					$type = 'subcat';
-				} elseif ( $title->getNamespace() == NS_FILE ) {
-					$type = 'file';
-				} else {
-					$type = 'page';
-				}
+				$type = MWNamespace::getCategoryLinkType( $title->getNamespace() );
 				$newSortKey = $collation->getSortKey(
 					$title->getCategorySortkey( $prefix ) );
 				if ( $verboseStats ) {
@@ -310,11 +304,7 @@ TEXT
 			if ( $raw !== '' ) {
 				$raw .= ', ';
 			}
-			if ( !isset( $this->sizeHistogram[$i] ) ) {
-				$val = 0;
-			} else {
-				$val = $this->sizeHistogram[$i];
-			}
+			$val = $this->sizeHistogram[$i] ?? 0;
 			for ( $coarseIndex = 0; $coarseIndex < $numBins - 1; $coarseIndex++ ) {
 				if ( $coarseBoundaries[$coarseIndex] > $i ) {
 					$coarseHistogram[$coarseIndex] += $val;
@@ -333,11 +323,7 @@ TEXT
 		$scale = 60 / $maxBinVal;
 		$prevBoundary = 0;
 		for ( $coarseIndex = 0; $coarseIndex < $numBins; $coarseIndex++ ) {
-			if ( !isset( $coarseHistogram[$coarseIndex] ) ) {
-				$val = 0;
-			} else {
-				$val = $coarseHistogram[$coarseIndex];
-			}
+			$val = $coarseHistogram[$coarseIndex] ?? 0;
 			$boundary = $coarseBoundaries[$coarseIndex];
 			$this->output( sprintf( "%-10s %-10d |%s\n",
 				$prevBoundary . '-' . ( $boundary - 1 ) . ': ',

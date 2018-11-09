@@ -12,7 +12,6 @@
 		]
 	},
 	"tog-underline": "Miñcewirilpe lasun",
-	"tog-showtoolbar": "Pengelün kümeelkünun ñi chemkün",
 	"tog-editondblclick": "Wirin pakina epu klik mew",
 	"underline-always": "Rumel",
 	"underline-never": "Turpu",
@@ -519,8 +518,8 @@
 	"whatlinkshere": "Lasulu faw püle",
 	"whatlinkshere-title": "Wülngiñ nülkükawlelu \"$1\"",
 	"whatlinkshere-page": "Pakina:",
-	"linkshere": "Tüfachi wülngiñ nülkükawley '''[[:$1]]''':",
-	"nolinkshere": "Chem wülngiñ no rume nülkükawlelu '''[[:$1]]'''.",
+	"linkshere": "Tüfachi wülngiñ nülkükawley '''$2''':",
+	"nolinkshere": "Chem wülngiñ no rume nülkükawlelu '''$2'''.",
 	"isredirect": "wüñongünen wülngiñ",
 	"istemplate": "yomtukudungu",
 	"isimage": "Adentun lasun",

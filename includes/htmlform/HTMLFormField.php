@@ -17,6 +17,9 @@ abstract class HTMLFormField {
 	protected $mVFormClass = '';
 	protected $mHelpClass = false;
 	protected $mDefault;
+	/**
+	 * @var array|bool|null
+	 */
 	protected $mOptions = false;
 	protected $mOptionsLabelsNotFromMessage = false;
 	protected $mHideIf = null;
@@ -78,12 +81,9 @@ abstract class HTMLFormField {
 		$args = func_get_args();
 
 		if ( $this->mParent ) {
-			$callback = [ $this->mParent, 'msg' ];
-		} else {
-			$callback = 'wfMessage';
+			return $this->mParent->msg( ...$args );
 		}
-
-		return call_user_func_array( $callback, $args );
+		return wfMessage( ...$args );
 	}
 
 	/**
@@ -312,7 +312,7 @@ abstract class HTMLFormField {
 		}
 
 		if ( isset( $this->mValidationCallback ) ) {
-			return call_user_func( $this->mValidationCallback, $value, $alldata, $this->mParent );
+			return ( $this->mValidationCallback )( $value, $alldata, $this->mParent );
 		}
 
 		return true;
@@ -320,7 +320,7 @@ abstract class HTMLFormField {
 
 	public function filter( $value, $alldata ) {
 		if ( isset( $this->mFilterCallback ) ) {
-			$value = call_user_func( $this->mFilterCallback, $value, $alldata, $this->mParent );
+			$value = ( $this->mFilterCallback )( $value, $alldata, $this->mParent );
 		}
 
 		return $value;
@@ -397,9 +397,9 @@ abstract class HTMLFormField {
 		if ( isset( $params['label-message'] ) ) {
 			$this->mLabel = $this->getMessage( $params['label-message'] )->parse();
 		} elseif ( isset( $params['label'] ) ) {
-			if ( $params['label'] === '&#160;' ) {
+			if ( $params['label'] === '&#160;' || $params['label'] === "\u{00A0}" ) {
 				// Apparently some things set &nbsp directly and in an odd format
-				$this->mLabel = '&#160;';
+				$this->mLabel = "\u{00A0}";
 			} else {
 				$this->mLabel = htmlspecialchars( $params['label'] );
 			}
@@ -543,11 +543,10 @@ abstract class HTMLFormField {
 			'mw-htmlform-nolabel' => ( $label === '' )
 		];
 
-		$horizontalLabel = isset( $this->mParams['horizontal-label'] )
-			? $this->mParams['horizontal-label'] : false;
+		$horizontalLabel = $this->mParams['horizontal-label'] ?? false;
 
 		if ( $horizontalLabel ) {
-			$field = '&#160;' . $inputHtml . "\n$errors";
+			$field = "\u{00A0}" . $inputHtml . "\n$errors";
 		} else {
 			$field = Html::rawElement(
 				'div',
@@ -608,18 +607,13 @@ abstract class HTMLFormField {
 			$error = new OOUI\HtmlSnippet( $error );
 		}
 
-		$notices = $this->getNotices();
-		foreach ( $notices as &$notice ) {
-			$notice = new OOUI\HtmlSnippet( $notice );
-		}
-
 		$config = [
 			'classes' => [ "mw-htmlform-field-$fieldType", $this->mClass ],
 			'align' => $this->getLabelAlignOOUI(),
 			'help' => ( $help !== null && $help !== '' ) ? new OOUI\HtmlSnippet( $help ) : null,
 			'errors' => $errors,
-			'notices' => $notices,
 			'infusable' => $infusable,
+			'helpInline' => $this->isHelpInline(),
 		];
 
 		$preloadModules = false;
@@ -631,7 +625,7 @@ abstract class HTMLFormField {
 
 		// the element could specify, that the label doesn't need to be added
 		$label = $this->getLabel();
-		if ( $label && $label !== '&#160;' ) {
+		if ( $label && $label !== "\u{00A0}" && $label !== '&#160;' ) {
 			$config['label'] = new OOUI\HtmlSnippet( $label );
 		}
 
@@ -680,8 +674,8 @@ abstract class HTMLFormField {
 	 * @return bool
 	 */
 	protected function shouldInfuseOOUI() {
-		// Always infuse fields with help text, since the interface for it is nicer with JS
-		return $this->getHelpText() !== null;
+		// Always infuse fields with popup help text, since the interface for it is nicer with JS
+		return $this->getHelpText() !== null && !$this->isHelpInline();
 	}
 
 	/**
@@ -746,7 +740,7 @@ abstract class HTMLFormField {
 		$label = $this->getLabelHtml( $cellAttributes );
 
 		$html = "\n" . $errors .
-			$label . '&#160;' .
+			$label . "\u{00A0}" .
 			$inputHtml .
 			$helptext;
 
@@ -853,11 +847,28 @@ abstract class HTMLFormField {
 	}
 
 	/**
+	 * Determine if the help text should be displayed inline.
+	 *
+	 * Only applies to OOUI forms.
+	 *
+	 * @since 1.31
+	 * @return bool
+	 */
+	public function isHelpInline() {
+		return $this->mParams['help-inline'] ?? true;
+	}
+
+	/**
 	 * Determine form errors to display and their classes
 	 * @since 1.20
 	 *
+	 * phan-taint-check gets confused with returning both classes
+	 * and errors and thinks double escaping is happening, so specify
+	 * that return value has no taint.
+	 *
 	 * @param string $value The value of the input
 	 * @return array array( $errors, $errorClass )
+	 * @return-taint none
 	 */
 	public function getErrorsAndErrorClass( $value ) {
 		$errors = $this->validate( $value, $this->mParent->mFieldData );
@@ -900,34 +911,10 @@ abstract class HTMLFormField {
 	}
 
 	/**
-	 * Determine notices to display for the field.
-	 *
-	 * @since 1.28
-	 * @return string[]
-	 */
-	public function getNotices() {
-		$notices = [];
-
-		if ( isset( $this->mParams['notice-message'] ) ) {
-			$notices[] = $this->getMessage( $this->mParams['notice-message'] )->parse();
-		}
-
-		if ( isset( $this->mParams['notice-messages'] ) ) {
-			foreach ( $this->mParams['notice-messages'] as $msg ) {
-				$notices[] = $this->getMessage( $msg )->parse();
-			}
-		} elseif ( isset( $this->mParams['notice'] ) ) {
-			$notices[] = $this->mParams['notice'];
-		}
-
-		return $notices;
-	}
-
-	/**
 	 * @return string HTML
 	 */
 	public function getLabel() {
-		return is_null( $this->mLabel ) ? '' : $this->mLabel;
+		return $this->mLabel ?? '';
 	}
 
 	public function getLabelHtml( $cellAttributes = [] ) {
@@ -941,14 +928,13 @@ abstract class HTMLFormField {
 
 		$labelValue = trim( $this->getLabel() );
 		$hasLabel = false;
-		if ( $labelValue !== '&#160;' && $labelValue !== '' ) {
+		if ( $labelValue !== "\u{00A0}" && $labelValue !== '&#160;' && $labelValue !== '' ) {
 			$hasLabel = true;
 		}
 
 		$displayFormat = $this->mParent->getDisplayFormat();
 		$html = '';
-		$horizontalLabel = isset( $this->mParams['horizontal-label'] )
-			? $this->mParams['horizontal-label'] : false;
+		$horizontalLabel = $this->mParams['horizontal-label'] ?? false;
 
 		if ( $displayFormat === 'table' ) {
 			$html =
@@ -970,11 +956,7 @@ abstract class HTMLFormField {
 	}
 
 	public function getDefault() {
-		if ( isset( $this->mDefault ) ) {
-			return $this->mDefault;
-		} else {
-			return null;
-		}
+		return $this->mDefault ?? null;
 	}
 
 	/**
@@ -1125,6 +1107,12 @@ abstract class HTMLFormField {
 	 * Formats one or more errors as accepted by field validation-callback.
 	 *
 	 * @param string|Message|array $errors Array of strings or Message instances
+	 * To work around limitations in phan-taint-check the calling
+	 * class has taintedness disabled. So instead we pretend that
+	 * this method outputs html, since the result is eventually
+	 * outputted anyways without escaping and this allows us to verify
+	 * stuff is safe even though the caller has taintedness cleared.
+	 * @param-taint $errors exec_html
 	 * @return string HTML
 	 * @since 1.18
 	 */
